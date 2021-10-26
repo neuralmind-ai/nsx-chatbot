@@ -22,7 +22,7 @@ async def waba_webhook(body: Union[WebhookMessage, WebhookStatus]):
         payload = {
             "to": body.messages[0]["from"],
             "type": "text",
-            "text": {"body": message},
+            "text": {"body": message[:4096]},
         }
         response = requests.post(
             settings.text_url,
