@@ -26,7 +26,7 @@ async def waba_webhook(body: Union[WebhookMessage, WebhookStatus]):
         }
         response = requests.post(
             settings.text_url,
-            data=payload,
+            json=payload,
             headers={"D360-Api-Key": settings.token, "Content-Type": "application/json"},
         )
         print(response.json())

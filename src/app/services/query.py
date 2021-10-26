@@ -13,7 +13,7 @@ def build_msg(query, content):
             message += f"{item['source_url']}\n"
         message += "\n"
         for p in item["paragraphs"]:
-            message += p[:900]
+            message += p
             message += "\n\n"
         message += "\n"
     return message
