@@ -1,0 +1,11 @@
+__pycache__/
+
+.env
+
+api/uploads
+
+api/dags
+
+environment.yml
+
+docker-compose.yml
