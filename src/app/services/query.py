@@ -12,15 +12,17 @@ def build_msg(query, content):
         if item["source_url"]:
             message += f"{item['source_url']}\n"
         message += "\n"
-        for p, h in zip(item["paragraphs"], item["highlights"]):
-            if h == []:
-                message += p
-                message += "\n\n"
-            else:
-                for start,end in h:
-                    message += f"{p[start:end]}\n"
+        if item["content_is_formated"]:
+            for p in item["paragraphs"]:
+                message += f"{p}\n"
+        else:
+            for p, h in zip(item["paragraphs"], item["highlights"]):
+                if h == []:
+                    message += f"{p}\n"
+                else:
+                    for start, end in h:
+                        message += f"{p[start:end]}\n"
         message += "\n"
-    print(message)
     return message
 
 

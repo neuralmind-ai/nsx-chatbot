@@ -1,5 +1,4 @@
 import requests
-from requests.api import request
 
 from typing import Union
 import requests
@@ -7,7 +6,7 @@ import requests
 from fastapi import APIRouter
 
 from app.services.query import query
-from app.schemas.messages import WebhookMessage, WebhookStatus, TextMessage
+from app.schemas.messages import WebhookMessage, WebhookStatus
 
 from settings import settings
 

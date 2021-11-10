@@ -1,7 +1,6 @@
 from pydantic import BaseSettings, HttpUrl
 
 
-
 class Settings(BaseSettings):
     token: str
     base_url: HttpUrl
