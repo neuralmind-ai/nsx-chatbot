@@ -16,8 +16,10 @@ router = APIRouter()
 @router.post("/webhook")
 async def waba_webhook(body: Union[WebhookMessage, WebhookStatus]):
     if isinstance(body, WebhookMessage):
-
-        message = query(body.messages[0]["text"]["body"])
+        try:
+            message = query(body.messages[0]["text"]["body"])
+        except:
+            message = "Formato de mensagem inválido."
         payload = {
             "to": body.messages[0]["from"],
             "type": "text",
