@@ -31,15 +31,6 @@ def query(user_query: str):
         f"{settings.base_url}/api/search",
         params={"index": "demo_sebrae", "query": user_query},
     )
-    query_id = response.json()["query_id"]
-    while True:
-        sleep(2)
-        response = requests.get(
-            f"{settings.base_url}/api/search/result",
-            params={"query_id": query_id},
-        )
-        if response.status_code == 200:
-            break
     content = response.json()["response_reranker"][:1]
     message = build_msg(user_query, content)
 
