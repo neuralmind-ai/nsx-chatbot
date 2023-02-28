@@ -75,7 +75,6 @@ def get_multidoc_answer(user_query: str, documents) -> Tuple[str, str]:
 
         response = response.json()
 
-        print(response)
         return response["pred_answer"], response["explanation"]
 
     except Exception:

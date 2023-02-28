@@ -7,11 +7,6 @@ from os.path import exists
 sys.path.append(os.getcwd())
 from settings import settings
 
-with open("/whatsappbot/teste", "w") as file:
-
-    data = {"time": datetime.utcnow().isoformat()}
-    json.dump(data, file)
-
 if exists(settings.search_data_base_path):
 
     files_names = os.listdir(settings.search_data_base_path)
