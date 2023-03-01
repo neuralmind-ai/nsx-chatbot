@@ -122,11 +122,11 @@ def nsx_search_request(user_query: str, auth_token: str = None):
 
         body = {
             "index": settings.search_index,
-            "max_docs_to_return": 15,
             "query": user_query,
         }
 
         if auth_token != None:
+            
             response = requests.get(
                 url,
                 headers={
@@ -134,7 +134,14 @@ def nsx_search_request(user_query: str, auth_token: str = None):
                 },
                 params = body
             )
+
         else:
+
+            #Web index uses 15 documents to produce the response
+            #By requesting this exact amount of documents it becomes easier to list the links later
+            if settings.search_index == "web":
+                body["max_docs_to_return"] = 15
+
             response = requests.get(
                 url,
                 params = body
