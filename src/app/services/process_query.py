@@ -3,6 +3,7 @@ from datetime import datetime
 from os.path import exists
 from typing import Tuple
 import time
+
 import requests
 from fastapi import HTTPException
 
@@ -85,6 +86,10 @@ def get_multidoc_answer(user_query: str, documents) -> Tuple[str, str]:
 
 def get_keycloak_token() -> str:
 
+    """Makes a request to NSX client token api in order to obtain a keycloak token to be used for
+       acessing private indexes.
+    """
+
     try:
         response = requests.post(
             f"{settings.base_url}/api/client/token",
@@ -104,30 +109,44 @@ def get_keycloak_token() -> str:
             status_code=503, detail="Request to NSX Keycloak token API failed"
         )
 
-def nsx_search_request(user_query: str, auth_token: None):
+def nsx_search_request(user_query: str, auth_token: str = None):
+
+    """
+        Uses the NSX search API to obtain relevant information for answering the given query.
+        If no authentication token is provided, the search will only be able to acess public indexes.
+    """
 
     try:
-        response = requests.get(
-            f"{settings.base_url}/api/search",
-            headers={
-                "Authorization": "Client " + auth_token
-            },
-            params={
-                "index": settings.search_index,
-                "max_docs_to_return": 15,
-                "query": user_query,
-            },
-        )
 
-        content = response.json()["response_reranker"]
+        url = f"{settings.base_url}/api/search"
 
-        return content
+        body = {
+            "index": settings.search_index,
+            "max_docs_to_return": 15,
+            "query": user_query,
+        }
+
+        if auth_token != None:
+            response = requests.get(
+                url,
+                headers={
+                    "Authorization": "Client " + auth_token
+                },
+                params = body
+            )
+        else:
+            response = requests.get(
+                url,
+                params = body
+            )
+
+        return response
 
     except Exception:
 
         raise HTTPException(status_code=503, detail="Request to NSX Search API failed")
 
-def get_documents(user_query: str):
+def get_documents(user_query: str) -> dict:
 
     """Receives a query and make a request to NSX for retrieving relevant documents"""
 
@@ -142,7 +161,7 @@ def get_documents(user_query: str):
             if search_response.status_code != 403:
                 break
 
-            time.sleep(2)
+            time.sleep(1)
     
     else:
 

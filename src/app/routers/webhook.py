@@ -30,10 +30,15 @@ def process_request(body: Union[WebhookMessage, WebhookStatus]):
 
             try:
                 message = process_query(query, destinatary)
+
+                #For the web index, the response has a button for requesting for the sources:
                 if settings.search_index == "web":
                     post_360_dialog_interative_message(destinatary, message, query)
+
+                #For other indexes, only a standart Whatsapp message is produced:
                 else:
                     post_360_dialog_text_message(destinatary, message)
+
             except Exception as e:
                 message = "Erro no processamento da mensagem. Tente novamente."
                 post_360_dialog_text_message(destinatary, message)

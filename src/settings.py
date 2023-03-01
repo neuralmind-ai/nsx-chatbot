@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     text_url: HttpUrl
 
     # Configurations for requesting in NSX API's:
-    search_index: str = "central_solucoes"  # index where documents are searched
+    search_index: str = "web"  # index where documents are searched
     language: str = "pt"  # language in which the responses will be generated
     nsx_auth_requests_attempts: int = 3 # number of attempts NSX API will try in case of auth fail
     keycloak_login: str
