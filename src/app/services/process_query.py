@@ -2,7 +2,6 @@ import json
 from datetime import datetime
 from os.path import exists
 from typing import Tuple
-
 import time
 import requests
 from fastapi import HTTPException
@@ -34,14 +33,14 @@ def build_explanation(query: str, user_id: str) -> str:
 
 {data["search_data"][query]["explanation"]}
 
-Links para acesso:\n\n:"""
+Links para acesso:\n\n"""
 
         for index, document in enumerate(
             data["search_data"][query]["documents"], start=1
         ):
 
-            document_reference = document["source_url"]
-            explanation += f"{index}: {document_reference}\n\n"
+            document_link = document["source_url"]
+            explanation += f"{index}: {document_link}\n\n"
 
         return explanation
 
@@ -54,6 +53,35 @@ Links para acesso:\n\n:"""
         explanation += "\n\nCaso deseje, realize a pesquisa novamente."
 
         return explanation
+
+
+def get_multidoc_answer(user_query: str, documents) -> Tuple[str, str]:
+
+    """
+    Gets a MultidocQA answer based on a user query and a list of documents retrieved by NSX.
+    Returns a 2D tuple that contains the predicted answer and its explanation, respectively.
+    """
+
+    try:
+        response = requests.post(
+            f"{settings.base_url}/api/multidocqa",
+            json={
+                "query": user_query,
+                "documents": documents,
+                "language": settings.language,
+                "index": settings.search_index,
+            },
+        )
+
+        response = response.json()
+
+        return response["pred_answer"], response["explanation"]
+
+    except Exception:
+
+        raise HTTPException(
+            status_code=503, detail="Request to NSX MultidocQA API failed"
+        )
 
 def get_keycloak_token() -> str:
 
@@ -76,70 +104,17 @@ def get_keycloak_token() -> str:
             status_code=503, detail="Request to NSX Keycloak token API failed"
         )
 
-def post_multidoc_request(user_query: str, documents, auth_token: str = None) -> dict:
-
-    try:
-        response = requests.post(
-            f"{settings.base_url}/api/multidocqa",
-            headers={
-                "Authorization": auth_token
-            },
-            json={
-                "query": user_query,
-                "documents": documents,
-                "language": settings.language,
-                "index": settings.search_index,
-            },
-        )
-
-        response = response.json()
-
-        return response
-
-    except Exception:
-
-        raise HTTPException(
-            status_code=503, detail="Request to NSX MultidocQA API failed"
-        )
-
-
-def get_multidoc_answer(user_query: str, documents) -> Tuple[str, str]:
-
-    """
-    Gets a MultidocQA answer based on a user query and a list of documents retrieved by NSX.
-    Returns a 2D tuple that contains the predicted answer and its explanation, respectively.
-    """
-
-    # If we are requesting to "central_solucoes", we must get a authorization token before requesting
-    if settings.search_index == "central_solucoes":
-
-        for i in range(settings.nsx_auth_requests_attempts):
-
-            keycloak_token = get_keycloak_token()
-
-            multidoc_response = post_multidoc_request(user_query, documents, keycloak_token)
-
-            if multidoc_response.status_code != 403:
-                break
-            
-            time.sleep(2)
-
-    else:
-
-        multidoc_response = post_multidoc_request(user_query, documents)
-    
-    return multidoc_response["pred_answer"], multidoc_response["explanation"]
-
-def get_documents(user_query: str):
-
-    """Receives a query and make a request to NSX for retrieving relevant documents"""
+def nsx_search_request(user_query: str, auth_token: None):
 
     try:
         response = requests.get(
             f"{settings.base_url}/api/search",
+            headers={
+                "Authorization": "Client " + auth_token
+            },
             params={
                 "index": settings.search_index,
-                "max_docs_to_return": 15 if settings.search_index == "web" else None,
+                "max_docs_to_return": 15,
                 "query": user_query,
             },
         )
@@ -152,7 +127,31 @@ def get_documents(user_query: str):
 
         raise HTTPException(status_code=503, detail="Request to NSX Search API failed")
 
+def get_documents(user_query: str):
 
+    """Receives a query and make a request to NSX for retrieving relevant documents"""
+
+    if settings.search_index == "central_solucoes":
+
+        for i in range(settings.nsx_auth_requests_attempts):
+
+            auth_token = get_keycloak_token()
+        
+            search_response = nsx_search_request(user_query, auth_token)
+
+            if search_response.status_code != 403:
+                break
+
+            time.sleep(2)
+    
+    else:
+
+        search_response = nsx_search_request(user_query)
+    
+    content = search_response.json()["response_reranker"]
+
+    return content
+    
 def process_query(user_query: str, user_id: str) -> str:
 
     """Receives a query, processes it and returns the message that will be posted to the user"""
