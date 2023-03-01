@@ -8,6 +8,7 @@ from app.services.dialog_360 import (
     post_360_dialog_text_message,
 )
 from app.services.process_query import build_explanation, process_query
+from settings import settings
 
 router = APIRouter()
 
@@ -29,9 +30,12 @@ def process_request(body: Union[WebhookMessage, WebhookStatus]):
 
             try:
                 message = process_query(query, destinatary)
-                post_360_dialog_interative_message(destinatary, message, query)
+                if settings.search_index == "web":
+                    post_360_dialog_interative_message(destinatary, message, query)
+                else:
+                    post_360_dialog_text_message(destinatary, message)
             except Exception as e:
-                message = "Erro no processamento da mensagem"
+                message = "Erro no processamento da mensagem. Tente novamente."
                 post_360_dialog_text_message(destinatary, message)
                 raise e
 
