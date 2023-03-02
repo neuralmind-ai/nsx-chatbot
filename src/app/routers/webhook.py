@@ -1,17 +1,20 @@
 from typing import Union
 
 from fastapi import APIRouter, BackgroundTasks
-
+import json
+from datetime import datetime
 from app.schemas.messages import WebhookMessage, WebhookStatus
 from app.services.dialog_360 import (
     post_360_dialog_interative_message,
     post_360_dialog_text_message,
 )
+from app.services.build_timed_logger import build_timed_logger
 from app.services.process_query import build_explanation, process_query
 from settings import settings
 
 router = APIRouter()
 
+logger = build_timed_logger("webhook_logger", "whatsappbot_log")
 
 def process_request(body: Union[WebhookMessage, WebhookStatus]):
 
@@ -44,6 +47,16 @@ def process_request(body: Union[WebhookMessage, WebhookStatus]):
                 post_360_dialog_text_message(destinatary, message)
                 raise e
 
+            logger.info(
+                json.dumps({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "user": destinatary,
+                    "query": query,
+                    "type": "NSX request at index" + settings.search_index,
+                    "response": message
+                })
+            )
+
         else:
 
             button_title = body.messages[0]["interactive"]["button_reply"]["title"]
@@ -54,6 +67,15 @@ def process_request(body: Union[WebhookMessage, WebhookStatus]):
                 explanation = build_explanation(query, destinatary)
 
                 post_360_dialog_text_message(destinatary, explanation)
+
+                logger.info({
+                    json.dumps({
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "user": destinatary,
+                        "type": "Query explanation request",
+                        "response": explanation
+                    })
+                })
 
 
 @router.post("/webhook")
