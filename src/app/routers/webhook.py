@@ -68,14 +68,14 @@ def process_request(body: Union[WebhookMessage, WebhookStatus]):
 
                 post_360_dialog_text_message(destinatary, explanation)
 
-                logger.info({
+                logger.info(
                     json.dumps({
                         "timestamp": datetime.utcnow().isoformat(),
                         "user": destinatary,
                         "type": "Query explanation request",
                         "response": explanation
                     })
-                })
+                )
 
 
 @router.post("/webhook")
