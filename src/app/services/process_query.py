@@ -157,7 +157,7 @@ def get_documents(user_query: str) -> dict:
 
     """Receives a query and make a request to NSX for retrieving relevant documents"""
 
-    if settings.search_index == "FAQ":
+    if settings.search_index_needs_token:
 
         for i in range(settings.nsx_auth_requests_attempts):
 
@@ -215,5 +215,5 @@ def process_query(user_query: str, user_id: str) -> str:
             data["last_interaction_time"] = current_date
             json.dump(data, file)
 
-    answer = f"Fundep Concursos\n{answer}"
+    answer = settings.answer_base_string + answer
     return answer
