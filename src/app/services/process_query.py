@@ -32,9 +32,9 @@ def build_explanation(query: str, user_id: str) -> str:
 
         explanation = f"""Referências utilizadas para a elaboração da resposta à pesquisa por "{query}":
 
-{data["search_data"][query]["explanation"]}
+        {data["search_data"][query]["explanation"]}
 
-Links para acesso:\n\n"""
+        Links para acesso:\n\n"""
 
         for index, document in enumerate(
             data["search_data"][query]["documents"], start=1
@@ -89,28 +89,28 @@ def get_keycloak_token() -> str:
     """Makes a request to NSX client token api in order to obtain a keycloak token to be used for
        acessing private indexes.
     """
+    for _ in range(5):
+        try:
+            response = requests.post(
+                f"{settings.base_url}/api/client/token",
+                json={
+                    "client_id": settings.keycloak_login,
+                    "client_secret": settings.keycloak_password
+                }
+            )
 
-    try:
-        response = requests.post(
-            f"{settings.base_url}/api/client/token",
-            json={
-                "client_id": settings.keycloak_login,
-                "client_secret": settings.keycloak_password
-            }
-        )
+            response = response.json()
 
-        response = response.json()
+            return response["token"]
 
-        return response["token"]
-
-    except:
-
-        raise HTTPException(
-            status_code=503, detail="Request to NSX Keycloak token API failed"
-        )
+        except:
+            print("Trying again...")
+            time.sleep(2)
+    raise HTTPException(
+        status_code=503, detail="Request to NSX Keycloak token API failed"
+    )
 
 def nsx_search_request(user_query: str, auth_token: str = None):
-
     """
         Uses the NSX search API to obtain relevant information for answering the given query.
         If no authentication token is provided, the search will only be able to acess public indexes.
@@ -157,7 +157,7 @@ def get_documents(user_query: str) -> dict:
 
     """Receives a query and make a request to NSX for retrieving relevant documents"""
 
-    if settings.search_index == "central_solucoes":
+    if settings.search_index == "FAQ":
 
         for i in range(settings.nsx_auth_requests_attempts):
 
@@ -215,4 +215,5 @@ def process_query(user_query: str, user_id: str) -> str:
             data["last_interaction_time"] = current_date
             json.dump(data, file)
 
+    answer = f"Fundep Concursos\n{answer}"
     return answer
