@@ -2,32 +2,39 @@ from pydantic import BaseSettings, HttpUrl
 
 
 class Settings(BaseSettings):
-
     """Whatsapp Bot settings"""
 
     token: str
     base_url: HttpUrl
     text_url: HttpUrl
 
-    #Logging configurations:
-    log_path: str = "/whatsappbot/logs/"
+    # Logging configurations:
+    log_path: str = "whatsappbot/logs/"
 
-    # Configurations for requesting in NSX API's:
-    search_index: str = "web"  # index where documents are searched
-    search_index_needs_token: bool = False #Determine if a keycloak token should be used to access the index
-    language: str = "pt"  # language in which the responses will be generated
-    nsx_auth_requests_attempts: int = 3 # number of attempts NSX API will try in case of auth fail
-    keycloak_login: str
-    keycloak_password: str
+    # Prompt_answerer
+    completion_endpoint: str = "http://localhost:7000/api/openai/completions"
+    moderation_endpoint: str = "http://localhost:7000/api/openai/moderations"
+    max_tokens_prompt: int = 4000
 
-    # Search data storing configurations: 
-    search_data_base_path: str = "/whatsappbot/app/search_data/"
-    storing_duration_in_minutes: float = 60
+    # Neuralsearchx
+    nsx_endpoint: str = "https://nsx.ai/api/search"
+    api_key: str = ""
+    search_index: str = "FUNDEP_Ciencias"
 
-    #Answer configurations:
-    answer_base_string: str = "Fundep Concursos\n"
+    # Chat_history
+    max_tokens_chat_history: int = 1500
+
+    # Tiktoken
+    encoding_model = "gpt-3.5-turbo"
+
+    # Redis
+    expiration_time_in_seconds: int = 3600
+
+    # ChatHandler
+    max_num_reasoning: int = 6
 
     class Config:
         env_file = ".env"
+
 
 settings = Settings()

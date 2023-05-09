@@ -2,3 +2,5 @@ fastapi[all]==0.70.0
 pydantic[dotenv]==1.8.2
 requests==2.26.0
 uvicorn==0.15.0
+tiktoken==0.3.3
+redis==4.5.4
