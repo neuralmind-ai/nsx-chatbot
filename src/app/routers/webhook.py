@@ -11,7 +11,7 @@ from settings import settings
 
 router = APIRouter()
 
-logger = build_timed_logger("webhook_logger", "whatsappbot_log")
+logger = build_timed_logger("webhook_logger", "webhook_log")
 
 
 def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]):

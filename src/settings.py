@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     text_url: HttpUrl
 
     # Logging configurations:
-    log_path: str = "whatsappbot/logs/"
+    log_path: str = "logs/"
 
     # Prompt_answerer
     completion_endpoint: str = "http://localhost:7000/api/openai/completions"
@@ -32,6 +32,12 @@ class Settings(BaseSettings):
 
     # ChatHandler
     max_num_reasoning: int = 6
+
+    # AzureCosmos
+    cosmos_endpoint: str = "https://chatbot-nosql.documents.azure.com:443/"
+    cosmos_key: str
+    cosmos_database_name: str = "chatbot"
+    cosmos_container_name: str = "chatHistory"
 
     class Config:
         env_file = ".env"

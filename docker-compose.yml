@@ -6,7 +6,7 @@ services:
     restart: always
     env_file: "./src/.env"
     volumes:
-      - ./logs:/whatsappbot/logs
+      - ./src/app/logs:/whatsappbot/logs
     network_mode: "host"
 
   redis:

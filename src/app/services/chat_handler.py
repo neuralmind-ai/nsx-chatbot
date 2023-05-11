@@ -1,17 +1,24 @@
 import json
 import re
+import time
+from datetime import datetime
 from glob import glob
 from typing import List
 
 import requests
 import tiktoken
 
+from app.schemas.cosmos_item import Item
+from app.services.crud_cosmos import upsert_chat_history
 from app.services.memory_handler import MemoryHandler
 from settings import settings
 
 from .build_timed_logger import build_timed_logger
 
 chat_logger = build_timed_logger("chat_logger", "chat.log")
+error_logger = build_timed_logger("error_logger", "error.log")
+harmful_logger = build_timed_logger("harmful_logger", "harmful.log")
+latency_logger = build_timed_logger("latency_logger", "latency.log")
 
 memory_handler = MemoryHandler("localhost", 6380)
 
@@ -78,19 +85,35 @@ class ChatHandler:
             - user_id: the id of the user (used to access the chat history).
             - index: the index to be used for the search (FAQ and NSX).
         """
+        # Stores all reasoning steps for debugging
         debug_string = ""
+
+        time_begin = time.time()
+        # Stores the latency for each step
+        latency_dict = {}
+
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Checks if the user message is harmful
         if self.is_the_message_harmful(user_message):
+            harmful_logger.info(
+                json.dumps(
+                    {"user_id": user_id, "message": user_message, "timestamp": date}
+                )
+            )
             return "Mensagem ignorada por conter conteúdo ofensivo."
 
         # Gets the chat history from Redis
+        time_pre_redis = time.time()
         chat_history = self.get_chat_history(user_id)
+        latency_dict["redis_get"] = time.time() - time_pre_redis
+
         prompt = f"{self.chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
         # Starts the reasoning loop
         done = True
-        for i in range(1, settings.max_num_reasoning):
+        time_pre_reasoning = time.time()
+        for i in range(1, settings.max_num_reasoning + 1):
             # Adds the reasoning to the prompt
             reasoning_prompt = f"{prompt}Pensamento {i}:"
             reasoning = self.get_reasoning(
@@ -153,11 +176,86 @@ class ChatHandler:
 
         # Moderates the answer
         if self.is_the_message_harmful(answer):
+            harmful_logger.info(
+                json.dumps(
+                    {
+                        "user_id": user_id,
+                        "user_message": user_message,
+                        "answer": answer,
+                        "reasoning": debug_string,
+                        "timestamp": date,
+                    }
+                )
+            )
+
             return "Mensagem ignorada por conter conteúdo ofensivo."
 
+        latency_dict["reasoning"] = time.time() - time_pre_reasoning
+
         # Adds the answer to the user's chat history
+        time_pre_redis_history = time.time()
         memory_handler.save_history(
             user_id, f"Usuário: {user_message}\nAssistente: {answer}\n"
+        )
+        latency_dict["redis_set"] = time.time() - time_pre_redis_history
+
+        chat_logger.info(
+            json.dumps(
+                {
+                    "user_id": user_id,
+                    "user_message": user_message,
+                    "answer": answer,
+                    "reasoning": debug_string,
+                    "timestamp": date,
+                }
+            )
+        )
+
+        # Save user message and answer to CosmosDB
+        try:
+            time_pre_cosmos = time.time()
+            upsert_chat_history(
+                user_id=user_id,
+                index=index,
+                content=Item(
+                    timestamp=date,
+                    user_message=user_message,
+                    answer=answer,
+                    reasoning=debug_string,
+                    latency=latency_dict,
+                ).dict(),
+            )
+            latency_dict["cosmos"] = time.time() - time_pre_cosmos
+        except Exception as e:
+            if self.verbose:
+                print("Error sending to Azure CosmosDB", e)
+            error_logger.error(
+                json.dumps(
+                    {
+                        "user_id": user_id,
+                        "user_message": user_message,
+                        "answer": answer,
+                        "reasoning": debug_string,
+                        "timestamp": date,
+                        "error": str(e),
+                    }
+                )
+            )
+
+        total_time = time.time() - time_begin
+        latency_dict["total"] = total_time
+
+        # Save all latency steps to latency.log
+        latency_logger.info(
+            json.dumps(
+                {
+                    **latency_dict,
+                    "user_id": user_id,
+                    "user_message": user_message,
+                    "answer": answer,
+                    "timestamp": date,
+                }
+            )
         )
 
         # If the debug is not requested, returns the answer
@@ -202,7 +300,17 @@ class ChatHandler:
         }
         response = requests.post(settings.completion_endpoint, json=body)
         if not response.ok:
-            chat_logger.error(response.text)
+            error_logger.error(
+                json.dumps(
+                    {
+                        "prompt": prompt,
+                        "stop": stop,
+                        "status_code": response.status_code,
+                        "service": "prompt_answerer",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                )
+            )
             raise Exception("Error in reasoning")
         return response.json()["text"].strip()
 
@@ -352,5 +460,5 @@ class ChatHandler:
                 return True
             return False
         # TODO: Log if the message comes from the user or the assistant
-        chat_logger.error(response.text)
+        error_logger.error(response.text)
         raise Exception("Error in moderation")
