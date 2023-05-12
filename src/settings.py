@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # ChatHandler
     max_num_reasoning: int = 6
 
+    # IndexMenu
+    selection_message: str = "Selecione um edital"
+    request_menu_message: str = "#edital"
+
     # AzureCosmos
     cosmos_endpoint: str = "https://chatbot-nosql.documents.azure.com:443/"
     cosmos_key: str

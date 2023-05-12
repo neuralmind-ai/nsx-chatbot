@@ -9,4 +9,4 @@ user_id = "TEST"
 
 while True:
     user_message = input("\nMensagem: ")
-    print(chat_bot.get_response(user_message, user_id, index="FUNDEP_Ciencias"))
+    print(chat_bot.get_response(user_message=user_message, user_id=user_id, index="FUNDEP_Ciencias"))

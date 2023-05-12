@@ -32,7 +32,7 @@ def get_chat_answer(
     index: str = Query(..., description="Index to search for the answer"),
 ):
     try:
-        answer = request.app.state.chatbot.get_response(body.message, body.user, index)
+        answer = request.app.state.chatbot.get_response(user_message=body.message, user_id=body.user, index=index)
         chatbot_api_logger.info(
             json.dumps(
                 {

@@ -76,13 +76,18 @@ class ChatHandler:
         return faqs
 
     def get_response(
-        self, user_message: str, user_id: str, index: str = settings.search_index
+        self,
+        user_message: str,
+        user_id: str,
+        chatbot_id: str = "",
+        index: str = settings.search_index,
     ) -> str:
         """
         Returns the response for the user message.
         Args:
             - user_message: the message sent by the user.
             - user_id: the id of the user (used to access the chat history).
+            - chatbot_id: the id of the chatbot (used to access the chat history).
             - index: the index to be used for the search (FAQ and NSX).
         """
         # Stores all reasoning steps for debugging
@@ -105,7 +110,7 @@ class ChatHandler:
 
         # Gets the chat history from Redis
         time_pre_redis = time.time()
-        chat_history = self.get_chat_history(user_id, index)
+        chat_history = self.get_chat_history(user_id, chatbot_id, index)
         latency_dict["redis_get"] = time.time() - time_pre_redis
 
         prompt = f"{self.chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
@@ -195,7 +200,10 @@ class ChatHandler:
         # Adds the answer to the user's chat history
         time_pre_redis_history = time.time()
         memory_handler.save_history(
-            user_id, index, f"Usuário: {user_message}\nAssistente: {answer}\n"
+            user_id,
+            chatbot_id,
+            index,
+            f"Usuário: {user_message}\nAssistente: {answer}\n",
         )
         latency_dict["redis_set"] = time.time() - time_pre_redis_history
 
@@ -402,15 +410,16 @@ class ChatHandler:
                         return self.faq[query]
         return "irrespondível"
 
-    def get_chat_history(self, user_id: str, index: str) -> str:
+    def get_chat_history(self, user_id: str, chatbot_id: str, index: str) -> str:
         """
         Gets the chat history for the user using the memory_handler.
         Args:
-            - user_id: the id of the user (could be the number).
+            - user_id: the id of the user.
+            - chatbot_id: the id of the chatbot.
         Returns:
             - the chat history for the user (str).
         """
-        chat_history = memory_handler.retrieve_history(user_id, index)
+        chat_history = memory_handler.retrieve_history(user_id, chatbot_id, index)
         # If there is no history
         if chat_history is None:
             return ""
@@ -419,9 +428,12 @@ class ChatHandler:
         # TODO: Experiments to check if making a summary is a good idea
         if self.get_num_tokens(chat_history) > settings.max_tokens_chat_history:
             summary = self.make_summary(chat_history)
-            memory_handler.clear_history(user_id, index)
+            memory_handler.clear_history(user_id, chatbot_id, index)
             memory_handler.save_history(
-                user_id, index, f"Resumo de conversas anteriores: {summary}\n"
+                user_id,
+                chatbot_id,
+                index,
+                f"Resumo de conversas anteriores: {summary}\n",
             )
         return chat_history
 

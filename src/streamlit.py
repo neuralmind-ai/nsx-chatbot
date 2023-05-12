@@ -34,7 +34,7 @@ text_area = st.empty()
 message_input = st.text_input("Escreva uma mensagem")
 
 if message_input and not clear_chat:
-    answer = chatbot.get_response(message_input, str(user_id))
+    answer = chatbot.get_response(user_message=message_input, user_id=str(user_id))
 
     if "chat_history" in st.session_state:
         st.session_state.chat_history = (
