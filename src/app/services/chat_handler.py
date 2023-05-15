@@ -78,7 +78,6 @@ class ChatHandler:
             faqs[faq.split("/")[-1].split(".")[0]] = json.load(open(faq, "r"))
         return faqs
 
-    @staticmethod
     def message_extractor(self, action: str) -> str:
 
         """
