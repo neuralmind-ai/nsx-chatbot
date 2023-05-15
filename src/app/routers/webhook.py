@@ -41,7 +41,15 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
         header_indexes = request.headers["indexes"]
         header_labels = request.headers["labels"]
 
-        if message == settings.request_menu_message or current_index is None:
+        num_indexes = len(header_indexes.split("$"))
+        if current_index is None and num_indexes == 1:
+            request.app.state.memory.set_latest_user_index(
+                destinatary, nm_number, header_indexes
+            )
+            current_index = header_indexes
+        elif (
+            message == settings.request_menu_message or current_index is None
+        ) and num_indexes > 1:
             post_360_dialog_menu_message(
                 destinatary,
                 header_indexes,
