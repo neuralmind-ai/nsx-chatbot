@@ -4,6 +4,7 @@ from logging.handlers import TimedRotatingFileHandler
 
 from settings import settings
 
+
 def build_timed_logger(logger_name: str, filename: str) -> logging.Logger:
     """
     Returns a logger that logs to a file that is rotated daily
@@ -16,5 +17,5 @@ def build_timed_logger(logger_name: str, filename: str) -> logging.Logger:
     path = f"{settings.log_path}/{filename}"
     handler = TimedRotatingFileHandler(path, when="d", interval=1, utc=True)
     logger.addHandler(handler)
-    
+
     return logger

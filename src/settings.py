@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # ChatHandler
     max_num_reasoning: int = 6
+    max_tokens_faq_prompt: int = 3700
 
     # IndexMenu
     selection_message: str = "Selecione um edital"

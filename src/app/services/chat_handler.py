@@ -26,6 +26,7 @@ memory_handler = MemoryHandler("localhost", 6380)
 class ChatHandler:
     """
     This class is responsible for handling the chatbot.
+
     Methods:
         get_response: returns the response for the user message.
         load_faqs: loads the faqs from the faqs folder.
@@ -55,7 +56,9 @@ class ChatHandler:
         self.chat_prompt = prompts[self.language]["chat_prompt"]
         self.faq_prompt = prompts[self.language]["faq_prompt"]
         self.summary_prompt = prompts[self.language]["new_summary_prompt"]
-        self.force_finish_prompt = prompts[self.language]["force_finish_prompt"]
+        self.message_extractor_prompt = prompts[self.language][
+            "message_extractor_prompt"
+        ]
 
         # Loads the FAQs
         self.faq = self.load_faqs("app/faqs")
@@ -74,6 +77,23 @@ class ChatHandler:
         for faq in faq_files:
             faqs[faq.split("/")[-1].split(".")[0]] = json.load(open(faq, "r"))
         return faqs
+
+    @staticmethod
+    def message_extractor(self, action: str) -> str:
+
+        """
+        Extracts the input message from an action using the language model.
+
+        Args:
+            - action: action from with we need to extract an input message
+
+        Returns:
+            - string containing the extracted action
+        """
+
+        prompt = self.message_extractor_prompt + action + "\n\nResposta:"
+
+        return self.get_reasoning(prompt)
 
     def get_response(
         self,
@@ -98,6 +118,9 @@ class ChatHandler:
         latency_dict = {}
 
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        used_faq = (
+            []
+        )  # Restarts the used faq, as a new message is going to be processed
 
         # Checks if the user message is harmful
         if self.is_the_message_harmful(user_message):
@@ -115,8 +138,12 @@ class ChatHandler:
 
         prompt = f"{self.chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
+        # Checks if there is enough tokens available to process the message:
+        if self.get_num_tokens(prompt) > settings.max_tokens_prompt:
+            return "Sua mensagem é muito longa para que eu consiga processá-la adequadamente. Por favor, escreva-a de modo mais conciso."
+
         # Starts the reasoning loop
-        done = True
+        done = False
         time_pre_reasoning = time.time()
         for i in range(1, settings.max_num_reasoning + 1):
             # Adds the reasoning to the prompt
@@ -125,14 +152,14 @@ class ChatHandler:
                 prompt=reasoning_prompt, stop=[f"Observação {i}:", "Mensagem:"]
             )
             try:
-                thought, action = reasoning.strip().split(f"\nAção {i}:")
+                thought, action = reasoning.split(f"\nAção {i}:")
             except Exception:
                 # Occurs if there is no action
                 thought = reasoning.strip().split("\n")[0]
                 action = self.get_reasoning(
                     f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
                     stop=["\n"],
-                ).strip()
+                )
 
             # Prints the reasoning
             if self.verbose:
@@ -140,13 +167,23 @@ class ChatHandler:
                 print(f"Action {i}: {action}")
             debug_string += f"Thought {i}: {thought}\nAction {i}: {action}\n"
 
-            # TODO: Create a better regex to match actions
+            try:
+                # Regex for matching what's between square brackets, or after the opening square bracket (sometimes the model forgets to close it).
+                action_input = re.search(
+                    "(?<=[\[(<{\"'])(.|\n)*(?=[\])>}\"'])|(?<=[\[(<{\"'])(.|\n)*",
+                    action,
+                ).group()
+            except Exception:
+                # In the case that the regex fails, we use the LLM for extracting the desired text
+                action_input = self.message_extractor(action)
+
             if action.startswith(" Finalizar"):
                 done = True
+                answer = action_input
                 break
             else:
                 # If the action is not to finish, gets an observation
-                observation = self.get_observation(action, index)
+                observation = self.get_observation(action_input, index, used_faq)
 
                 if self.verbose:
                     print(f"Observation {i}: {observation}")
@@ -166,18 +203,18 @@ class ChatHandler:
         # If the reasoning is not done, forces the finish
         if not done:
             action = self.get_reasoning(
-                f"{prompt}Pensamento: 'Máximo número de iteracões atingido. Devo responder com as informações que tenho até agora.'\n\nAção: Finalizar["
+                f"{prompt}Pensamento Final: Máximo número de iteracões atingido. Devo responder com as informações que tenho até agora.\nAção: Finalizar["
             )
             if self.verbose:
-                print(f"Action {i}: {action}")
-            debug_string += f"Action {i}: {action}\n"
+                print(f"Finalizar Forçado: {action}")
+            debug_string += f"Finalizar Forçado: {action}\n"
 
-        # TODO: Create a better regex to match actions
-        try:
-            answer = re.search("(?<=\\[).*(?=\\])|(?<=\\[).*", action).group()
-        except Exception:
-            # If the action did not match the regex, uses the action as the answer
-            answer = action
+            try:
+                # Regex for extracting the closing square brancket:
+                answer = re.search("(.|\n)*(?=\])", action).group()
+            except Exception:
+                # In the case that the model might have forgotten of adding the closing square bracket:
+                answer = action
 
         # Moderates the answer
         if self.is_the_message_harmful(answer):
@@ -284,10 +321,12 @@ class ChatHandler:
     def get_reasoning(prompt: str, stop: List[str] = None) -> str:
         """
         Sends a request to prompt_answerer to get a reasoning.
+
         Args:
             - prompt: the prompt to be sent to prompt_answerer.
             - stop: the stop tokens list.
-        returns:
+
+        Returns:
             - the reasoning for the message (str).
         """
         if stop is None:
@@ -322,41 +361,41 @@ class ChatHandler:
             raise Exception("Error in reasoning")
         return response.json()["text"].strip()
 
-    def get_observation(self, action: str, index: str):
+    def get_observation(self, query: str, index: str, used_faq: list):
         """
         Returns the observation for the message.
+
         Args:
-            - action: string with the action to be performed.
+            - query: string with the query to be searched.
             - index: the index to be used for the search (FAQ and NSX).
+            - used_faq: list of queries that have already been used.
+
         Returns:
-            - the observation for the message (str).
+            - information related to the query.
         """
-        # Extracts the query from the action
-        try:
-            query = re.search("(?<=\\[).*(?=\\])|(?<=\\[).*", action).group()
-        except Exception:
-            query = action
 
         # Tries to find a similar query in the FAQ
-        answer = self.get_faq_answer(query, index)
+        observation = self.get_faq_answer(query, index, used_faq)
 
-        if answer == "irrespondível":
+        if observation == "irrespondível":
             # Get the first document from NSX
-            answer = self.get_nsx_answer(query, index)
+            observation = self.get_nsx_answer(query, index)
 
             if self.verbose:
-                print("NSX: ", answer)
+                print("NSX: ", observation)
 
-        return answer
+        return observation
 
-    def get_nsx_answer(self, query: str, index: str):
+    def get_nsx_answer(self, query: str, index: str) -> str:
         """
         Gets the first document from NSX.
+
         Args:
             - query: the query to be sent to NSX.
             - index: the index to be used for the search.
+
         Returns:
-            - the first document from NSX (str).
+            - the first document from NSX.
         """
         # Parameters for the request
         params = {
@@ -375,29 +414,51 @@ class ChatHandler:
             return response["response_reranker"][0]["paragraphs"][0]
         return "Não foi possível encontrar uma resposta."
 
-    def get_faq_answer(self, query: str, index: str):
+    def get_faq_answer(self, query: str, index: str, used_faq: list) -> str:
         """
         Search for an answer in the FAQ.
+
         Args:
             - query: the query to be used in the search.
             - index: the FAQ to be used for the search.
+            - used_faq: list containing queries from the faq that have already been used
+
         Returns:
-            - the answer for the query (str).
+            - the answer for the query.
         """
-        # TODO: Check for prompt length before sending the request
         # TODO: How to deal with large FAQs?
-        # Creates the prompt based on the FAQ
+
+        # We will only try to match queries that have not been used for processing the current message.
+        queries = ""
         prompt = self.faq_prompt.format(
-            queries="\n".join([question for question in self.faq[index]]),
+            queries="",
             search_input=query,
         )
+        for question in self.faq[index]:
+            if (
+                question not in used_faq
+                and self.get_num_tokens(prompt) < settings.max_tokens_faq_prompt
+            ):
+                queries += query + "\n"
+                prompt = self.faq_prompt.format(
+                    queries=queries,
+                    search_input=query,
+                )
+            if self.get_num_tokens(prompt) > settings.max_tokens_faq_prompt:
+                break
+
+        # if nothing could be added, we already know that the FAQ can not answer the query
+        if queries == "":
+            return "irrespondível"
+
         # Gets the reasoning for the prompt
         response = self.get_reasoning(prompt, stop=["\n"])
 
         # If there is an answer
-        if not response.startswith(" irrespondível"):
+        if not response.startswith("irrespondível"):
             # Returns the exact answer if it is in the FAQ
             if response in self.faq:
+                used_faq.append(response)
                 if self.verbose:
                     print("Found the answer in the FAQ")
                 return self.faq[response]
@@ -405,6 +466,7 @@ class ChatHandler:
             else:  # If the query is in the answer, returns the answer
                 for query in self.faq:
                     if query in response:
+                        used_faq.append(query)
                         if self.verbose:
                             print("Found the answer in the FAQ")
                         return self.faq[query]
@@ -413,6 +475,7 @@ class ChatHandler:
     def get_chat_history(self, user_id: str, chatbot_id: str, index: str) -> str:
         """
         Gets the chat history for the user using the memory_handler.
+
         Args:
             - user_id: the id of the user.
             - chatbot_id: the id of the chatbot.
@@ -440,8 +503,10 @@ class ChatHandler:
     def make_summary(self, chat_history: str) -> str:
         """
         Creates a summary for the chat history.
+
         Args:
             - chat_history: the chat history to be summarized.
+
         Returns:
             - the summary for the chat history (str).
         """
@@ -459,8 +524,10 @@ class ChatHandler:
     def is_the_message_harmful(user_message: str) -> bool:
         """
         Checks if the message is harmful using the moderation service.
+
         Args:
             - user_message: the message sent by the user.
+
         Returns:
             - True if the message is harmful, False otherwise.
         """
