@@ -334,7 +334,7 @@ class ChatHandler:
         body = {
             "service": "ChatBot",
             "prompt": [{"role": "user", "content": prompt}],
-            "model": settings.encoding_model,
+            "model": settings.reasoning_model,
             "configurations": {
                 "temperature": 0,
                 "max_tokens": 512,

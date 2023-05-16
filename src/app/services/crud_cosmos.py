@@ -30,7 +30,10 @@ def upsert_chat_history(user_id: str, index: str, content: dict):
     """
     item = read_item(user_id)
     if item:
-        item["messages"][index].append(content)
+        if item["messages"].get(index):
+            item["messages"][index].append(content)
+        else:
+            item["messages"][index] = [content]
     else:
         item = {"id": user_id, "messages": {index: [content]}}
     container.upsert_item(body=item)

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # ChatHandler
     max_num_reasoning: int = 6
     max_tokens_faq_prompt: int = 3700
+    reasoning_model = "gpt-3.5-turbo-azure"
 
     # IndexMenu
     selection_message: str = "Selecione um edital"
