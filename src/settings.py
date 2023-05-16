@@ -1,4 +1,8 @@
+from dotenv import load_dotenv
 from pydantic import BaseSettings, HttpUrl
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -37,6 +41,9 @@ class Settings(BaseSettings):
     # IndexMenu
     selection_message: str = "Selecione um edital"
     request_menu_message: str = "#edital"
+
+    # Azure key vault
+    azure_vault_url: str = "https://nm-chatbot-keys.vault.azure.net/"
 
     # AzureCosmos
     cosmos_endpoint: str = "https://chatbot-nosql.documents.azure.com:443/"

@@ -51,9 +51,7 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             message == settings.request_menu_message or current_index is None
         ) and num_indexes > 1:
             post_360_dialog_menu_message(
-                destinatary,
-                header_indexes,
-                header_labels,
+                destinatary, header_indexes, header_labels, nm_number
             )
             return
 
@@ -61,11 +59,11 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             answer = request.app.state.chatbot.get_response(
                 message, destinatary, nm_number, current_index
             )
-            post_360_dialog_text_message(destinatary, answer)
+            post_360_dialog_text_message(destinatary, answer, nm_number)
 
         except Exception as e:
             error_message = "Erro no processamento da mensagem. Tente novamente."
-            post_360_dialog_text_message(destinatary, error_message)
+            post_360_dialog_text_message(destinatary, error_message, nm_number)
             raise e
 
         logger.info(

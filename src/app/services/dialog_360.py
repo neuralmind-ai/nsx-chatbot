@@ -1,12 +1,12 @@
 import requests
 
+from app.services.azure_vault import read_secret
 from settings import settings
 
 
-def post_360_dialog_text_message(destinatary: str, message: str):
-
+def post_360_dialog_text_message(destinatary: str, message: str, d360_number: str):
     """Posts a text message to 360 dialog."""
-
+    token = read_secret(d360_number)
     payload = {
         "to": destinatary,
         "type": "text",
@@ -16,14 +16,14 @@ def post_360_dialog_text_message(destinatary: str, message: str):
         settings.text_url,
         json=payload,
         headers={
-            "D360-Api-Key": settings.token,
+            "D360-Api-Key": token,
             "Content-Type": "application/json",
         },
     )
 
 
 def post_360_dialog_menu_message(
-    destinatary: str, header_indexes: list, header_labels: list
+    destinatary: str, header_indexes: list, header_labels: list, d360_number: str
 ):
 
     """
@@ -33,6 +33,7 @@ def post_360_dialog_menu_message(
         indexes (list): A string with the indexes names, separated by a $.
         labels (list): A string with the labels names, separated by a $.
     """
+    token = read_secret(d360_number)
     indexes = []
     labels = []
     for index, label in zip(header_indexes.split("$"), header_labels.split("$")):
@@ -53,7 +54,8 @@ def post_360_dialog_menu_message(
                 "text": "Olá. Escolha o edital que você deseja receber informações:"
             },
             "footer": {
-                "text": "Para escolher outro edital futuramente, digite " + settings.request_menu_message
+                "text": "Para escolher outro edital futuramente, digite "
+                + settings.request_menu_message
             },
             "action": {
                 "button": settings.selection_message,
@@ -65,7 +67,7 @@ def post_360_dialog_menu_message(
         settings.text_url,
         json=payload,
         headers={
-            "D360-Api-Key": settings.token,
+            "D360-Api-Key": token,
             "Content-Type": "application/json",
         },
     )
