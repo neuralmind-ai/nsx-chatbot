@@ -3,3 +3,7 @@ __pycache__
 src/logs/*
 
 !logs/.gitkeep
+
+# virtualenv
+.venv
+venv

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     nsx_endpoint: str = "https://nsx.ai/api/search"
     api_key: str = ""
     search_index: str = "FUNDEP_Ciencias"
+    nsx_score_endpoint: str = "https://nsx.ai/api/inference/score"
 
     # Chat_history
     max_tokens_chat_history: int = 1500
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     max_num_reasoning: int = 6
     max_tokens_faq_prompt: int = 3700
     reasoning_model = "gpt-3.5-turbo-azure"
+    max_faq_questions: int = 5
 
     # IndexMenu
     selection_message: str = "Selecione um edital"

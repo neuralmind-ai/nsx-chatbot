@@ -3,7 +3,7 @@ import re
 import time
 from datetime import datetime
 from glob import glob
-from typing import List
+from typing import Dict, List
 
 import requests
 import tiktoken
@@ -182,7 +182,9 @@ class ChatHandler:
                 break
             else:
                 # If the action is not to finish, gets an observation
-                observation = self.get_observation(action_input, index, used_faq)
+                observation = self.get_observation(
+                    action_input, index, used_faq, latency_dict
+                )
 
                 if self.verbose:
                     print(f"Observation {i}: {observation}")
@@ -360,7 +362,9 @@ class ChatHandler:
             raise Exception("Error in reasoning")
         return response.json()["text"].strip()
 
-    def get_observation(self, query: str, index: str, used_faq: list):
+    def get_observation(
+        self, query: str, index: str, used_faq: list, latency_dict: Dict[str, float]
+    ) -> str:
         """
         Returns the observation for the message.
 
@@ -368,17 +372,22 @@ class ChatHandler:
             - query: string with the query to be searched.
             - index: the index to be used for the search (FAQ and NSX).
             - used_faq: list of queries that have already been used.
+            - latency_dict: dictionary containing the latency for each step.
 
         Returns:
             - information related to the query.
         """
 
         # Tries to find a similar query in the FAQ
-        observation = self.get_faq_answer(query, index, used_faq)
+        time_faq_answer = time.time()
+        observation = self.get_faq_answer(query, index, used_faq, latency_dict)
+        latency_dict["faq_answer"] = time.time() - time_faq_answer
 
         if observation == "irrespondível":
             # Get the first document from NSX
+            time_nsx_answer = time.time()
             observation = self.get_nsx_answer(query, index)
+            latency_dict["nsx_answer"] = time.time() - time_nsx_answer
 
             if self.verbose:
                 print("NSX: ", observation)
@@ -413,7 +422,9 @@ class ChatHandler:
             return response["response_reranker"][0]["paragraphs"][0]
         return "Não foi possível encontrar uma resposta."
 
-    def get_faq_answer(self, query: str, index: str, used_faq: list) -> str:
+    def get_faq_answer(
+        self, query: str, index: str, used_faq: list, latency_dict: Dict[str, float]
+    ) -> str:
         """
         Search for an answer in the FAQ.
 
@@ -421,55 +432,97 @@ class ChatHandler:
             - query: the query to be used in the search.
             - index: the FAQ to be used for the search.
             - used_faq: list containing queries from the faq that have already been used
+            - latency_dict: dictionary containing the latency for each step.
 
         Returns:
             - the answer for the query.
         """
-        # TODO: How to deal with large FAQs?
 
-        # We will only try to match queries that have not been used for processing the current message.
+        # Gets the top questions from the FAQ that are similar to the query
+        time_nsx_score = time.time()
+        try:
+            top_questions = self.get_top_faq_questions(query, self.faq[index])
+        except Exception:
+            return "irrespondível"
+        latency_dict["nsx_score"] = time.time() - time_nsx_score
+
         queries = ""
-        prompt = self.faq_prompt.format(
-            queries="",
-            search_input=query,
-        )
-        for question in self.faq[index]:
+        prompt_size = self.get_num_tokens(self.faq_prompt + query)
+
+        for question in top_questions:
+            question_size = self.get_num_tokens(question)
             if (
                 question not in used_faq
-                and self.get_num_tokens(prompt) < settings.max_tokens_faq_prompt
+                and (prompt_size + question_size) < settings.max_tokens_faq_prompt
             ):
-                queries += query + "\n"
-                prompt = self.faq_prompt.format(
-                    queries=queries,
-                    search_input=query,
-                )
-            if self.get_num_tokens(prompt) > settings.max_tokens_faq_prompt:
-                break
+                queries += question + "\n"
+                prompt_size += question_size
 
-        # if nothing could be added, we already know that the FAQ can not answer the query
-        if queries == "":
-            return "irrespondível"
+        prompt = self.faq_prompt.format(
+            queries=queries,
+            search_input=query,
+        )
 
         # Gets the reasoning for the prompt
+        time_faq_selection = time.time()
         response = self.get_reasoning(prompt, stop=["\n"])
+        latency_dict["faq_selection"] = time.time() - time_faq_selection
 
-        # If there is an answer
-        if not response.startswith("irrespondível"):
-            # Returns the exact answer if it is in the FAQ
-            if response in self.faq:
-                used_faq.append(response)
+        # Returns the exact answer if the question is in the FAQ
+        if response in self.faq[index]:
+            used_faq.append(response)
+            if self.verbose:
+                print("Found the answer in the FAQ")
+            return self.faq[index][response]
+
+        # If the response does not match any question
+        # tries to check if the responses has an unexpected format
+        # Returns the answer of the first to_question that appears in the response
+        for question in top_questions:
+            if question in response:
+                used_faq.append(question)
                 if self.verbose:
                     print("Found the answer in the FAQ")
-                return self.faq[response]
-            # TODO: Improve substring search
-            else:  # If the query is in the answer, returns the answer
-                for query in self.faq:
-                    if query in response:
-                        used_faq.append(query)
-                        if self.verbose:
-                            print("Found the answer in the FAQ")
-                        return self.faq[query]
+                return self.faq[index][question]
+
         return "irrespondível"
+
+    def get_top_faq_questions(self, query: str, faq: Dict[str, str]) -> List[str]:
+        """Get the top questions from the FAQ that are similar to the query using nsx inference route.
+        Args:
+            - query: the query to be used in the search.
+            - faq: the FAQ to be used for the search.
+        Returns:
+            - the top questions from the FAQ that are similar to the query.
+        """
+        payload = {
+            "query": query,
+            "documents": [question for question in faq],
+            "language": self.language,
+        }
+        try:
+            response = requests.post(settings.nsx_score_endpoint, json=payload)
+            response.raise_for_status()
+            scores = [result["score"] for result in response.json()["results"]]
+            top_questions = [
+                question
+                for _, question in sorted(zip(scores, faq), reverse=True)[
+                    : settings.max_faq_questions
+                ]
+            ]
+            return top_questions
+        except requests.HTTPError as e:
+            error_logger.error(
+                json.dumps(
+                    {
+                        "error_msg": str(e),
+                        "status_code": response.status_code,
+                        "service": "nsx_score",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                )
+            )
+            raise Exception("error when trying to rank faq questions")
 
     def get_chat_history(self, user_id: str, chatbot_id: str, index: str) -> str:
         """
