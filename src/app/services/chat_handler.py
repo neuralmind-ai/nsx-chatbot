@@ -100,6 +100,7 @@ class ChatHandler:
         user_id: str,
         chatbot_id: str = "",
         index: str = settings.search_index,
+        api_key: str = settings.api_key,
     ) -> str:
         """
         Returns the response for the user message.
@@ -108,6 +109,7 @@ class ChatHandler:
             - user_id: the id of the user (used to access the chat history).
             - chatbot_id: the id of the chatbot (used to access the chat history).
             - index: the index to be used for the search (FAQ and NSX).
+            - api_key: the user's API key to be used for the NSX API.
         """
         # Stores all reasoning steps for debugging
         debug_string = ""
@@ -183,7 +185,7 @@ class ChatHandler:
             else:
                 # If the action is not to finish, gets an observation
                 observation = self.get_observation(
-                    action_input, index, used_faq, latency_dict
+                    action_input, index, used_faq, latency_dict, api_key
                 )
 
                 if self.verbose:
@@ -363,7 +365,12 @@ class ChatHandler:
         return response.json()["text"].strip()
 
     def get_observation(
-        self, query: str, index: str, used_faq: list, latency_dict: Dict[str, float]
+        self,
+        query: str,
+        index: str,
+        used_faq: list,
+        latency_dict: Dict[str, float],
+        api_key: str,
     ) -> str:
         """
         Returns the observation for the message.
@@ -373,6 +380,7 @@ class ChatHandler:
             - index: the index to be used for the search (FAQ and NSX).
             - used_faq: list of queries that have already been used.
             - latency_dict: dictionary containing the latency for each step.
+            - api_key: the user's API key to be used for the NSX API.
 
         Returns:
             - information related to the query.
@@ -386,7 +394,7 @@ class ChatHandler:
         if observation == "irrespondível":
             # Get the first document from NSX
             time_nsx_answer = time.time()
-            observation = self.get_nsx_answer(query, index)
+            observation = self.get_nsx_answer(query, index, api_key)
             latency_dict["nsx_answer"] = time.time() - time_nsx_answer
 
             if self.verbose:
@@ -394,13 +402,14 @@ class ChatHandler:
 
         return observation
 
-    def get_nsx_answer(self, query: str, index: str) -> str:
+    def get_nsx_answer(self, query: str, index: str, api_key: str) -> str:
         """
         Gets the first document from NSX.
 
         Args:
             - query: the query to be sent to NSX.
             - index: the index to be used for the search.
+            - api_key: the user's API key to be used for the NSX API.
 
         Returns:
             - the first document from NSX.
@@ -414,13 +423,13 @@ class ChatHandler:
         }
         # Headers for the request
         headers = {
-            "Authorization": f"APIKey {settings.api_key}",
+            "Authorization": f"APIKey {api_key}",
         }
         response = requests.get(settings.nsx_endpoint, params=params, headers=headers)
         if response.ok:
             response = response.json()
             return response["response_reranker"][0]["paragraphs"][0]
-        return "Não foi possível encontrar uma resposta."
+        raise Exception(f"Error in NSX: {response.json()['message']}")
 
     def get_faq_answer(
         self, query: str, index: str, used_faq: list, latency_dict: Dict[str, float]

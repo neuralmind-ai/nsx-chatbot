@@ -32,7 +32,20 @@ def get_chat_answer(
     index: str = Query(..., description="Index to search for the answer"),
 ):
     try:
-        answer = request.app.state.chatbot.get_response(user_message=body.message, user_id=body.user, index=index)
+        if "authorization" in request.headers:
+            api_key = request.headers["authorization"].split(" ")[1]
+            answer = request.app.state.chatbot.get_response(
+                user_message=body.message,
+                user_id=body.user,
+                index=index,
+                api_key=api_key,
+            )
+        else:
+            answer = request.app.state.chatbot.get_response(
+                user_message=body.message,
+                user_id=body.user,
+                index=index,
+            )
         chatbot_api_logger.info(
             json.dumps(
                 {
@@ -57,4 +70,4 @@ def get_chat_answer(
                 }
             )
         )
-        return HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
