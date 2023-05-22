@@ -72,7 +72,7 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                     "timestamp": datetime.utcnow().isoformat(),
                     "user": destinatary,
                     "message": message,
-                    "type": "NSX request at index " + settings.search_index,
+                    "type": "NSX request at index " + current_index,
                     "response": answer,
                 }
             )
