@@ -1,4 +1,5 @@
 import json
+import traceback
 from datetime import datetime
 from typing import Union
 
@@ -15,6 +16,7 @@ from settings import settings
 router = APIRouter()
 
 logger = build_timed_logger("webhook_logger", "webhook_log")
+error_logger = build_timed_logger("error_logger", "error_log")
 
 
 def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]):
@@ -64,6 +66,17 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
         except Exception as e:
             error_message = "Erro no processamento da mensagem. Tente novamente."
             post_360_dialog_text_message(destinatary, error_message, nm_number)
+            error_logger.error(
+                json.dumps(
+                    {
+                        "user_id": destinatary,
+                        "user_message": message,
+                        "error": str(e),
+                        "traceback": traceback.format_exc(),
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                )
+            )
             raise e
 
         logger.info(
