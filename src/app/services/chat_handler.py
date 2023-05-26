@@ -428,7 +428,10 @@ class ChatHandler:
         response = requests.get(settings.nsx_endpoint, params=params, headers=headers)
         if response.ok:
             response = response.json()
-            return response["response_reranker"][0]["paragraphs"][0]
+            if len(response["response_reranker"]) > 0:
+                return response["response_reranker"][0]["paragraphs"][0]
+            else:
+                return "Não foi possível encontrar sobre isso na minha base de dados"
         raise Exception(f"Error in NSX: {response.json()['message']}")
 
     def get_faq_answer(
