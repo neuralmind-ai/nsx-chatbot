@@ -6,6 +6,7 @@ from settings import settings
 client = CosmosClient(settings.cosmos_endpoint, settings.cosmos_key)
 database = client.get_database_client(settings.cosmos_database_name)
 container = database.get_container_client(settings.cosmos_container_name)
+index_container = database.get_container_client(settings.cosmos_index_container_name)
 
 
 def read_item(user_id: str):
@@ -37,3 +38,19 @@ def upsert_chat_history(user_id: str, index: str, content: dict):
     else:
         item = {"id": user_id, "messages": {index: [content]}}
     container.upsert_item(body=item)
+
+
+def get_index_information(index_id: str, information: str):
+    """
+    Gets the information of a specific index.
+    Args:
+        index_id: The id of the index.
+        information: The information to be retrieved.
+    Returns:
+        The information of the index.
+    """
+    try:
+        item = index_container.read_item(item=index_id, partition_key=index_id)
+        return item[information]
+    except CosmosResourceNotFoundError:
+        return None

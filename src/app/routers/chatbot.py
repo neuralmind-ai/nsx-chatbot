@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.schemas.messages import ChatAnswer, ChatMessage
 from app.services.build_timed_logger import build_timed_logger
+from app.services.crud_cosmos import get_index_information
 
 router = APIRouter()
 
@@ -57,6 +58,9 @@ def get_chat_answer(
                 }
             )
         )
+        message_prefix = get_index_information(index, "message_prefix")
+        if message_prefix:
+            answer = message_prefix + answer
         return ChatAnswer(answer=answer)
     except Exception as e:
         chatbot_api_logger.error(

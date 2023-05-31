@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     cosmos_key: str
     cosmos_database_name: str = "chatbot"
     cosmos_container_name: str = "chatHistory"
+    cosmos_index_container_name: str = "chatIndexConfig"
 
     class Config:
         env_file = ".env"

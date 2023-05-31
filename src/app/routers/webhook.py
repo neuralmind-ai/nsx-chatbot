@@ -8,6 +8,8 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from app.schemas.messages import WebhookMessage, WebhookStatus
 from app.services.build_timed_logger import build_timed_logger
 from app.services.dialog_360 import (
+    post_360_dialog_error_message,
+    post_360_dialog_intro_message,
     post_360_dialog_menu_message,
     post_360_dialog_text_message,
 )
@@ -58,14 +60,21 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             return
 
         try:
+            # Send a message to the user to let them know the bot is processing their request:
+            user_history = request.app.state.memory.retrieve_history(
+                destinatary, nm_number, current_index
+            )
+            post_360_dialog_intro_message(
+                destinatary, current_index, nm_number, user_history
+            )
+
             answer = request.app.state.chatbot.get_response(
                 message, destinatary, nm_number, current_index
             )
             post_360_dialog_text_message(destinatary, answer, nm_number)
 
         except Exception as e:
-            error_message = "Erro no processamento da mensagem. Tente novamente."
-            post_360_dialog_text_message(destinatary, error_message, nm_number)
+            post_360_dialog_error_message(destinatary, current_index, nm_number)
             error_logger.error(
                 json.dumps(
                     {

@@ -9,7 +9,7 @@ import requests
 import tiktoken
 
 from app.schemas.cosmos_item import Item
-from app.services.crud_cosmos import upsert_chat_history
+from app.services.crud_cosmos import get_index_information, upsert_chat_history
 from app.services.memory_handler import MemoryHandler
 from settings import settings
 
@@ -137,7 +137,11 @@ class ChatHandler:
         chat_history = self.get_chat_history(user_id, chatbot_id, index)
         latency_dict["redis_get"] = time.time() - time_pre_redis
 
-        prompt = f"{self.chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
+        index_domain = get_index_information(index, "domain")
+        if not index_domain:
+            index_domain = "os documentos em minha base de dados"
+        full_chat_prompt = self.chat_prompt.format(domain=index_domain)
+        prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
         # Checks if there is enough tokens available to process the message:
         if self.get_num_tokens(prompt) > settings.max_tokens_prompt:
