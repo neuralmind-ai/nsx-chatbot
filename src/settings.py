@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     api_key: str = ""
     search_index: str = "FUNDEP_Ciencias"
     nsx_score_endpoint: str = "https://nsx.ai/api/inference/score"
+    max_docs_to_return: int = 5
 
     # Chat_history
     max_tokens_chat_history: int = 1500

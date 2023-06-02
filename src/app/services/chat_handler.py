@@ -161,11 +161,13 @@ class ChatHandler:
                 thought, action = reasoning.split(f"\nAção {i}:")
             except Exception:
                 # Occurs if there is no action
-                thought = reasoning.strip().split("\n")[0]
+                thought = reasoning.split("\n")[0]
                 action = self.get_reasoning(
                     f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
                     stop=["\n"],
                 )
+
+            thought, action = thought.strip(), action.strip()
 
             # Prints the reasoning
             if self.verbose:
@@ -183,7 +185,7 @@ class ChatHandler:
                 # In the case that the regex fails, we use the LLM for extracting the desired text
                 action_input = self.message_extractor(action)
 
-            if action.startswith(" Finalizar"):
+            if action.startswith("Finalizar"):
                 done = True
                 answer = action_input
                 break
@@ -407,17 +409,17 @@ class ChatHandler:
         if observation == "irrespondível":
             # Get the first document from NSX
             time_nsx_answer = time.time()
-            observation = self.get_nsx_answer(query, index, api_key)
+            observation = self.get_nsx_sense_answer(query, index, api_key)
             latency_dict["nsx_answer"] = time.time() - time_nsx_answer
 
             if self.verbose:
-                print("NSX: ", observation)
+                print("Sense: ", observation)
 
         return observation
 
-    def get_nsx_answer(self, query: str, index: str, api_key: str) -> Union[List, str]:
+    def get_nsx_sense_answer(self, query: str, index: str, api_key: str) -> str:
         """
-        Gets the first document from NSX.
+        Gets a response using NSX sense.
 
         Args:
             - query: the query to be sent to NSX.
@@ -425,14 +427,13 @@ class ChatHandler:
             - api_key: the user's API key to be used for the NSX API.
 
         Returns:
-            List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
-            str: A string telling the chatbot that the answer was not found on NSX.
+            - A response built with NSX Sense.
         """
         # Parameters for the request
         params = {
             "index": index,
             "query": query,
-            "max_docs_to_return": 5,
+            "max_docs_to_return": settings.max_docs_to_return,
             "format_response": True,
         }
         # Headers for the request
@@ -440,17 +441,54 @@ class ChatHandler:
             "Authorization": f"APIKey {api_key}",
         }
         response = requests.get(settings.nsx_endpoint, params=params, headers=headers)
-        if response.ok:
-            response = response.json()
-            if len(response["response_reranker"]) > 0:
-                response_documents = [
-                    response_reranker["paragraphs"][0]
-                    for response_reranker in response["response_reranker"]
-                ]
-                return response_documents
-            else:
-                return "Não foi possível encontrar sobre isso na minha base de dados"
-        raise Exception(f"Error in NSX: {response.json()['message']}")
+        if not response.ok:
+            raise Exception(f"Error in NSX: {response.json()['message']}")
+
+        response = response.json()
+        if len(response["response_reranker"]) > 0:
+            return response["response_reranker"][0]["paragraphs"][0]
+        else:
+            return "Essa pesquisa não retornou resultados relevantes."
+
+        response = response.json()
+
+        documents = response["response_reranker"]
+
+        answer = self.answer_from_docs(query, index, documents)
+
+        return answer
+
+    def answer_from_docs(self, query: str, index: str, documents: list):
+        """
+        Builds an answer for the query based on the documents, using MultidocQA.
+
+        Args:
+            - query: the query that is going to be answered
+            - index: NSX index from which the documents were retrieved
+            - documents: list of NSX response_reranker dicts
+
+        Returns:
+            - An answer for the query based on the documents
+        """
+
+        params = {
+            "query": query,
+            "documents": documents,
+            "language": "pt",
+            "index": index,
+        }
+
+        response = requests.post(settings.multidocqa_endpoint, json=params)
+
+        if not response.ok:
+            raise Exception(f"Error in MultidocQA: {response.json()['msg']}")
+
+        response = response.json()["pred_answer"]
+
+        if "irrespondível" in response.lower():
+            return "Essa pesquisa não retornou resultados relevantes."
+        else:
+            return response
 
     def get_faq_answer(
         self, query: str, index: str, used_faq: list, latency_dict: Dict[str, float]
