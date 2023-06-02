@@ -1,9 +1,10 @@
 import json
 import re
 import time
+import traceback
 from datetime import datetime
 from glob import glob
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import requests
 import tiktoken
@@ -194,7 +195,13 @@ class ChatHandler:
 
                 if self.verbose:
                     print(f"Observation {i}: {observation}")
-                debug_string += f"Observation {i}: {observation}\n"
+                if isinstance(observation, list):
+                    debug_string += f"Observation {i} (from NSX): "
+                    for position, obs in enumerate(observation):
+                        debug_string += f"Document {position}: {obs}\n"
+                    observation = observation[0]
+                else:
+                    debug_string += f"Observation {i} (from FAQ): {observation}\n"
 
             # Adds the thought, action and observation to the iteration string
             iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action}\nObservação {i}: {observation}\n"
@@ -290,6 +297,7 @@ class ChatHandler:
                         "reasoning": debug_string,
                         "timestamp": date,
                         "error": str(e),
+                        "traceback": traceback.format_exc(),
                     }
                 )
             )
@@ -375,7 +383,7 @@ class ChatHandler:
         used_faq: list,
         latency_dict: Dict[str, float],
         api_key: str,
-    ) -> str:
+    ) -> Union[str, List]:
         """
         Returns the observation for the message.
 
@@ -387,7 +395,8 @@ class ChatHandler:
             - api_key: the user's API key to be used for the NSX API.
 
         Returns:
-            - information related to the query.
+            str: The answer to the query, if the query is in the FAQ, or
+            List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
         """
 
         # Tries to find a similar query in the FAQ
@@ -406,7 +415,7 @@ class ChatHandler:
 
         return observation
 
-    def get_nsx_answer(self, query: str, index: str, api_key: str) -> str:
+    def get_nsx_answer(self, query: str, index: str, api_key: str) -> Union[List, str]:
         """
         Gets the first document from NSX.
 
@@ -416,13 +425,14 @@ class ChatHandler:
             - api_key: the user's API key to be used for the NSX API.
 
         Returns:
-            - the first document from NSX.
+            List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
+            str: A string telling the chatbot that the answer was not found on NSX.
         """
         # Parameters for the request
         params = {
             "index": index,
             "query": query,
-            "max_docs_to_return": 1,
+            "max_docs_to_return": 5,
             "format_response": True,
         }
         # Headers for the request
@@ -433,7 +443,11 @@ class ChatHandler:
         if response.ok:
             response = response.json()
             if len(response["response_reranker"]) > 0:
-                return response["response_reranker"][0]["paragraphs"][0]
+                response_documents = [
+                    response_reranker["paragraphs"][0]
+                    for response_reranker in response["response_reranker"]
+                ]
+                return response_documents
             else:
                 return "Não foi possível encontrar sobre isso na minha base de dados"
         raise Exception(f"Error in NSX: {response.json()['message']}")
@@ -532,6 +546,7 @@ class ChatHandler:
                 json.dumps(
                     {
                         "error_msg": str(e),
+                        "traceback": traceback.format_exc(),
                         "status_code": response.status_code,
                         "service": "nsx_score",
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

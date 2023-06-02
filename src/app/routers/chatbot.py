@@ -1,4 +1,5 @@
 import json
+import traceback
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -71,6 +72,7 @@ def get_chat_answer(
                     "message": body.message,
                     "index": index,
                     "error": str(e),
+                    "traceback": traceback.format_exc(),
                 }
             )
         )
