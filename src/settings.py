@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # Neuralsearchx
     nsx_endpoint: str = "https://nsx.ai/api/search"
+    multidocqa_endpoint: str = "https://nsx.ai/api/multidocqa"
     api_key: str = ""
     search_index: str = "FUNDEP_Ciencias"
     nsx_score_endpoint: str = "https://nsx.ai/api/inference/score"
