@@ -445,14 +445,10 @@ class ChatHandler:
             raise Exception(f"Error in NSX: {response.json()['message']}")
 
         response = response.json()
-        if len(response["response_reranker"]) > 0:
-            return response["response_reranker"][0]["paragraphs"][0]
-        else:
-            return "Essa pesquisa não retornou resultados relevantes."
-
-        response = response.json()
-
         documents = response["response_reranker"]
+
+        if len(documents) == 0:
+            return "Essa pesquisa não retornou resultados relevantes."
 
         answer = self.answer_from_docs(query, index, documents)
 
