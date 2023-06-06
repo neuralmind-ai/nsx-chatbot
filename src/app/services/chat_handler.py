@@ -9,8 +9,8 @@ from typing import Dict, List, Union
 import requests
 import tiktoken
 
-from app.schemas.cosmos_item import Item
-from app.services.crud_cosmos import get_index_information, upsert_chat_history
+from app.schemas.database_item import Item
+from app.services.database import DBManager
 from app.services.memory_handler import MemoryHandler
 from settings import settings
 
@@ -20,8 +20,6 @@ chat_logger = build_timed_logger("chat_logger", "chat.log")
 error_logger = build_timed_logger("error_logger", "error.log")
 harmful_logger = build_timed_logger("harmful_logger", "harmful.log")
 latency_logger = build_timed_logger("latency_logger", "latency.log")
-
-memory_handler = MemoryHandler("localhost", 6380)
 
 
 class ChatHandler:
@@ -39,12 +37,30 @@ class ChatHandler:
         get_num_tokens: returns the number of tokens in the text.
     """
 
-    def __init__(self, verbose: bool = False, return_debug: bool = False):
+    def __init__(
+        self,
+        db: DBManager,
+        memory: MemoryHandler,
+        model: str = settings.reasoning_model,
+        verbose: bool = False,
+        return_debug: bool = False,
+        dev_mode: bool = False,
+        disable_faq: bool = False,
+        disable_memory: bool = False,
+        use_nsx_sense: bool = False,
+    ):
         """
         Args:
+            - db: The database manager. Used for storing the chat answers in a permanent database.
+            - memory: The memory handler. Used for storing the chat history for each user.
             - verbose: if True, prints all the steps of the reasoning.
             - return_debug: if True, returns the debug string containing
             all reasoning steps.
+            - dev_mode: With this flag, the chatbot can accept special messages to control its behavior
+            - disable_faq: With this flag, the chatbot will bypass the FAQ search feature
+            - disable_memory: With this flag, chatbot will not use chat_history feature
+            - use_nsx_sense: With this flag, chatbot will use nsx_sense
+            to get the answer instead of nsx_seach (EXPERIMENTAL)
         """
         # Loads all prompts
         prompts = json.load(
@@ -64,9 +80,18 @@ class ChatHandler:
         # Loads the FAQs
         self.faq = self.load_faqs("app/faqs")
 
+        # Feature managers
+        self._db = db
+        self._memory = memory
+        self._model = model
+
         # Verbose and debug
         self.verbose = verbose
         self.return_debug = return_debug
+        self.disable_faq = disable_faq
+        self.disable_memory = disable_memory
+        self.dev_mode = dev_mode
+        self.use_nsx_sense = use_nsx_sense
 
     def load_faqs(self, faq_folder: str):
         """
@@ -95,6 +120,33 @@ class ChatHandler:
 
         return self.get_reasoning(prompt)
 
+    def dev_mode_action(self, message: str) -> str:
+        """Manage dev mode special actions
+        Args:
+            - message: message sent by the user
+        Returns:
+            - response for the user message
+        """
+        if "#model" in message:
+            models_str = ", ".join(settings.available_models)
+            return (
+                "Digite o nome de um dos modelos disponíveis.\n"
+                f"Modelos disponíves:\n{models_str}"
+            )
+
+        # Remove "#" to find the correct model
+        model = message[1:].strip()
+        if model in settings.available_models:
+            self._model = model
+            return (
+                f"A partir de agora utilizarei o {self._model} "
+                "para formular o meu raciocínio e respostas!"
+            )
+
+        if "#nsx_sense" in message:
+            self.use_nsx_sense = not self.use_nsx_sense
+            return f"NSX Sense: {('enabled' if self.use_nsx_sense else 'disabled')}"
+
     def get_response(
         self,
         user_message: str,
@@ -112,6 +164,10 @@ class ChatHandler:
             - index: the index to be used for the search (FAQ and NSX).
             - api_key: the user's API key to be used for the NSX API.
         """
+
+        if user_message.startswith("#") and self.dev_mode:
+            return self.dev_mode_action(user_message)
+
         # Stores all reasoning steps for debugging
         debug_string = ""
 
@@ -120,9 +176,9 @@ class ChatHandler:
         latency_dict = {}
 
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        used_faq = (
-            []
-        )  # Restarts the used faq, as a new message is going to be processed
+
+        # Restarts the used faq, as a new message is going to be processed
+        used_faq = []
 
         # Checks if the user message is harmful
         if self.is_the_message_harmful(user_message):
@@ -133,12 +189,15 @@ class ChatHandler:
             )
             return "Mensagem ignorada por conter conteúdo ofensivo."
 
-        # Gets the chat history from Redis
-        time_pre_redis = time.time()
-        chat_history = self.get_chat_history(user_id, chatbot_id, index)
-        latency_dict["redis_get"] = time.time() - time_pre_redis
+        # Gets the chat history from memory
+        if not self.disable_memory:
+            time_pre_memory = time.time()
+            chat_history = self.get_chat_history(user_id, chatbot_id, index)
+            latency_dict["memory_get"] = time.time() - time_pre_memory
+        else:
+            chat_history = ""
 
-        index_domain = get_index_information(index, "domain")
+        index_domain = self._db.get_index_information(index, "domain")
         if not index_domain:
             index_domain = "os documentos em minha base de dados"
         full_chat_prompt = self.chat_prompt.format(domain=index_domain)
@@ -251,14 +310,15 @@ class ChatHandler:
         latency_dict["reasoning"] = time.time() - time_pre_reasoning
 
         # Adds the answer to the user's chat history
-        time_pre_redis_history = time.time()
-        memory_handler.save_history(
-            user_id,
-            chatbot_id,
-            index,
-            f"Usuário: {user_message}\nAssistente: {answer}\n",
-        )
-        latency_dict["redis_set"] = time.time() - time_pre_redis_history
+        if not self.disable_memory:
+            time_pre_memory_history = time.time()
+            self._memory.save_history(
+                user_id,
+                chatbot_id,
+                index,
+                f"Usuário: {user_message}\nAssistente: {answer}\n",
+            )
+            latency_dict["memory_set"] = time.time() - time_pre_memory_history
 
         chat_logger.info(
             json.dumps(
@@ -272,10 +332,10 @@ class ChatHandler:
             )
         )
 
-        # Save user message and answer to CosmosDB
+        # Save user message and chatbot answer to database
         try:
-            time_pre_cosmos = time.time()
-            upsert_chat_history(
+            time_pre_chat_history_db = time.time()
+            self._db.upsert_chat_history(
                 user_id=user_id,
                 index=index,
                 content=Item(
@@ -286,10 +346,10 @@ class ChatHandler:
                     latency=latency_dict,
                 ).dict(),
             )
-            latency_dict["cosmos"] = time.time() - time_pre_cosmos
+            latency_dict["chat_history_db"] = time.time() - time_pre_chat_history_db
         except Exception as e:
             if self.verbose:
-                print("Error sending to Azure CosmosDB", e)
+                print("Error sending to database", e)
             error_logger.error(
                 json.dumps(
                     {
@@ -334,8 +394,7 @@ class ChatHandler:
         encoding = tiktoken.encoding_for_model(settings.encoding_model)
         return len(encoding.encode(text))
 
-    @staticmethod
-    def get_reasoning(prompt: str, stop: List[str] = None) -> str:
+    def get_reasoning(self, prompt: str, stop: List[str] = None) -> str:
         """
         Sends a request to prompt_answerer to get a reasoning.
 
@@ -352,7 +411,7 @@ class ChatHandler:
         body = {
             "service": "ChatBot",
             "prompt": [{"role": "user", "content": prompt}],
-            "model": settings.reasoning_model,
+            "model": self._model,
             "configurations": {
                 "temperature": 0,
                 "max_tokens": 512,
@@ -402,20 +461,66 @@ class ChatHandler:
         """
 
         # Tries to find a similar query in the FAQ
-        time_faq_answer = time.time()
-        observation = self.get_faq_answer(query, index, used_faq, latency_dict)
-        latency_dict["faq_answer"] = time.time() - time_faq_answer
+        if not self.disable_faq:
+            time_faq_answer = time.time()
+            observation = self.get_faq_answer(query, index, used_faq, latency_dict)
+            latency_dict["faq_answer"] = time.time() - time_faq_answer
+        else:
+            observation = "irrespondível"
 
         if observation == "irrespondível":
-            # Get the first document from NSX
-            time_nsx_answer = time.time()
-            observation = self.get_nsx_sense_answer(query, index, api_key)
-            latency_dict["nsx_answer"] = time.time() - time_nsx_answer
+            if self.use_nsx_sense:
+                time_nsx_sense_answer = time.time()
+                observation = self.get_nsx_sense_answer(query, index, api_key)
+                latency_dict["nsx_sense_answer"] = time.time() - time_nsx_sense_answer
+            else:
+                # Get the first document from NSX
+                time_nsx_answer = time.time()
+                observation = self.get_nsx_answer(query, index, api_key)
+                latency_dict["nsx_answer"] = time.time() - time_nsx_answer
 
             if self.verbose:
-                print("Sense: ", observation)
+                print("Got the answer from NSX")
 
         return observation
+
+    def get_nsx_answer(self, query: str, index: str, api_key: str) -> Union[List, str]:
+        """
+        Gets the first document from NSX.
+
+        Args:
+            - query: the query to be sent to NSX.
+            - index: the index to be used for the search.
+            - api_key: the user's API key to be used for the NSX API.
+
+        Returns:
+            List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
+            str: A string telling the chatbot that the answer was not found on NSX.
+        """
+        # Parameters for the request
+        params = {
+            "index": index,
+            "query": query,
+            "max_docs_to_return": settings.max_docs_to_return,
+            "format_response": False,
+        }
+        # Headers for the request
+        headers = {
+            "Authorization": f"APIKey {api_key}",
+        }
+        response = requests.get(settings.nsx_endpoint, params=params, headers=headers)
+
+        if response.ok:
+            response = response.json()
+            if len(response["response_reranker"]) > 0:
+                response_documents = [
+                    response_reranker["paragraphs"][0]
+                    for response_reranker in response["response_reranker"]
+                ]
+                return response_documents
+            else:
+                return "Não foi possível encontrar sobre isso na minha base de dados"
+        raise Exception(f"Error in NSX: {response.json()['message']}")
 
     def get_nsx_sense_answer(self, query: str, index: str, api_key: str) -> str:
         """
@@ -434,7 +539,7 @@ class ChatHandler:
             "index": index,
             "query": query,
             "max_docs_to_return": settings.max_docs_to_return,
-            "format_response": True,
+            "format_response": False,
         }
         # Headers for the request
         headers = {
@@ -445,13 +550,16 @@ class ChatHandler:
             raise Exception(f"Error in NSX: {response.json()['message']}")
 
         response = response.json()
-        documents = response["response_reranker"]
+
+        documents = [
+            {"paragraphs": response_reranker["paragraphs"][0]}
+            for response_reranker in response["response_reranker"]
+        ]
 
         if len(documents) == 0:
             return "Essa pesquisa não retornou resultados relevantes."
 
         answer = self.answer_from_docs(query, index, documents)
-
         return answer
 
     def answer_from_docs(self, query: str, index: str, documents: list):
@@ -470,11 +578,11 @@ class ChatHandler:
         params = {
             "query": query,
             "documents": documents,
-            "language": "pt",
+            "language": settings.chatbot_language,
             "index": index,
         }
 
-        response = requests.post(settings.multidocqa_endpoint, json=params)
+        response = requests.post(settings.nsx_sense_endpoint, json=params)
 
         if not response.ok:
             raise Exception(f"Error in MultidocQA: {response.json()['msg']}")
@@ -599,7 +707,7 @@ class ChatHandler:
         Returns:
             - the chat history for the user (str).
         """
-        chat_history = memory_handler.retrieve_history(user_id, chatbot_id, index)
+        chat_history = self._memory.retrieve_history(user_id, chatbot_id, index)
         # If there is no history
         if chat_history is None:
             return ""
@@ -608,8 +716,8 @@ class ChatHandler:
         # TODO: Experiments to check if making a summary is a good idea
         if self.get_num_tokens(chat_history) > settings.max_tokens_chat_history:
             summary = self.make_summary(chat_history)
-            memory_handler.clear_history(user_id, chatbot_id, index)
-            memory_handler.save_history(
+            self._memory.clear_history(user_id, chatbot_id, index)
+            self._memory.save_history(
                 user_id,
                 chatbot_id,
                 index,

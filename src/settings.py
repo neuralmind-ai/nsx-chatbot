@@ -21,12 +21,12 @@ class Settings(BaseSettings):
     max_tokens_prompt: int = 4000
 
     # Neuralsearchx
-    nsx_endpoint: str = "https://nsx.ai/api/search"
-    multidocqa_endpoint: str = "https://nsx.ai/api/multidocqa"
     api_key: str = ""
-    search_index: str = "FUNDEP_Ciencias"
-    nsx_score_endpoint: str = "https://nsx.ai/api/inference/score"
     max_docs_to_return: int = 5
+    nsx_endpoint: str = "https://nsx.ai/api/search"
+    nsx_score_endpoint: str = "https://nsx.ai/api/inference/score"
+    nsx_sense_endpoint = "https://nsx.ai/api/multidocqa"
+    search_index: str = "FUNDEP_Ciencias"
 
     # Chat_history
     max_tokens_chat_history: int = 1500
@@ -38,10 +38,12 @@ class Settings(BaseSettings):
     expiration_time_in_seconds: int = 3600
 
     # ChatHandler
+    available_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-azure", "gpt-4"]
+    max_faq_questions: int = 5
     max_num_reasoning: int = 6
     max_tokens_faq_prompt: int = 3700
     reasoning_model = "gpt-3.5-turbo-azure"
-    max_faq_questions: int = 5
+    chatbot_language: str = "pt"
 
     # IndexMenu
     selection_message: str = "Selecione um edital"

@@ -65,7 +65,11 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                 destinatary, nm_number, current_index
             )
             post_360_dialog_intro_message(
-                destinatary, current_index, nm_number, user_history
+                destinatary,
+                current_index,
+                nm_number,
+                user_history,
+                request.app.state.db,
             )
 
             answer = request.app.state.chatbot.get_response(
@@ -74,7 +78,9 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             post_360_dialog_text_message(destinatary, answer, nm_number)
 
         except Exception as e:
-            post_360_dialog_error_message(destinatary, current_index, nm_number)
+            post_360_dialog_error_message(
+                destinatary, current_index, nm_number, request.app.state.db
+            )
             error_logger.error(
                 json.dumps(
                     {
