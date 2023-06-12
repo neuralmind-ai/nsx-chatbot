@@ -37,7 +37,7 @@ class CosmosDBManager(DBManager):
         except CosmosResourceNotFoundError:
             item = {"id": user_id, "messages": {index: [content]}}
 
-        self._chat_answers_container.upsert_item(body=item)
+        self._chat_history_container.upsert_item(body=item)
 
     def get_index_information(self, index_id: str, information: str):
         """
