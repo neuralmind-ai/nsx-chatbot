@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     chatbot_language: str = "pt"
 
     # IndexMenu
+    menu_message = "Olá. Escolha um dos itens abaixo para iniciar a conversa."
     selection_message: str = "Selecione um edital"
     request_menu_message: str = "#edital"
 

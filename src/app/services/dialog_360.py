@@ -24,7 +24,13 @@ def post_360_dialog_text_message(destinatary: str, message: str, d360_number: st
 
 
 def post_360_dialog_menu_message(
-    destinatary: str, header_indexes: list, header_labels: list, d360_number: str
+    destinatary: str,
+    header_indexes: list,
+    header_labels: list,
+    menu_message: str,
+    request_menu_message: str,
+    menu_button_message: str,
+    d360_number: str,
 ):
 
     """
@@ -51,16 +57,11 @@ def post_360_dialog_menu_message(
         "interactive": {
             "type": "list",
             "header": {"type": "text", "text": ""},
-            "body": {
-                "text": "Olá. Escolha o edital que você deseja receber informações:"
-            },
-            "footer": {
-                "text": "Para escolher outro edital futuramente, digite "
-                + settings.request_menu_message
-            },
+            "body": {"text": menu_message},
+            "footer": {"text": request_menu_message},
             "action": {
-                "button": settings.selection_message,
-                "sections": [{"title": "Escolha um dos editais", "rows": rows}],
+                "button": menu_button_message,
+                "sections": [{"title": "Escolha uma das opções", "rows": rows}],
             },
         },
     }
