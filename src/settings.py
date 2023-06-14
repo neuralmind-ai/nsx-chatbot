@@ -8,9 +8,9 @@ load_dotenv()
 class Settings(BaseSettings):
     """Whatsapp Bot settings"""
 
-    token: str
-    base_url: HttpUrl
-    text_url: HttpUrl
+    token: str = ""
+    base_url: HttpUrl = "https://nsx.ai"
+    text_url: HttpUrl = "https://waba.360dialog.io/v1/messages"
 
     # Logging configurations:
     log_path: str = "logs/"
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # AzureCosmos
     cosmos_endpoint: str = "https://chatbot-nosql.documents.azure.com:443/"
-    cosmos_key: str
+    cosmos_key: str = ""
     cosmos_database_name: str = "chatbot"
     cosmos_container_name: str = "chatHistory"
     cosmos_index_container_name: str = "chatIndexConfig"

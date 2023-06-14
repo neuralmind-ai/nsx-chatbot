@@ -8,3 +8,6 @@ src/logs/*
 .venv
 venv
 */.cache
+src/validation/data/*
+src/validation/config/database.jsonl
+src/validation/config/memory.json

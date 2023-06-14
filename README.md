@@ -1,11 +1,23 @@
-# WhatsApp bot for NeuralSearchX Sense
+# NSX-ChatBot
 
-This repository contains the code for integrating Whatsapp and [360 Dialog](https://www.360dialog.com/) with NeuralSearchX Sense.
+This repository contains the NSX-ChatBot code. This project uses LLM-based NeuralMind technologies (NSX, NSXSense and others) to implement an autonomous agent that answers user questions about a specific document base using a chat based approach.
 
 The Fast API instance created in `whatsappbot/src/app/main.py` provides a webhook (`whatsappbot/src/app/routers/webhook.py`) for processing user interactions with the Whatsapp account registered in 360 Dialog.
 
-NeuralSearchX Sense data that users might request after interacting with the bot is automatically stored in `.json` files in `whatsappbot/scr/app/search_data`, each for a different user. If necessary, this repository will be automatically created. The time of the last interaction of a user with the bot is also registered, making it possible to determine whether a user is active of not.
-
-After a defined number of minutes, a cronjob running `whatsappbot/src/cronjobs/search_data_cleaner.py` is executed in order to clean search data from inactive users. The execution interval mentioned above is defined in the Dockerfile.
-
 All settings - such those related to Neural Search API requests or the time interval for a user to be considered inactive - can be found in `whatsappbot/src/settings.py`.
+
+## Evaluation Pipeline
+
+For automatic evaluation of NSX-ChatBot responses, the project contains a configurable evaluation pipeline script that evaluates a set of QA Dataset with chatbot responses to obtain NSX-ChatBot accuracy on each dataset.
+
+The script is integrated with Bitbucket Pipelines, so it is possible to launch customizable pipelines, defining the behavior of NSX-ChatBot and the features enabled in the evaluation.
+
+The available variables for the evaluation pipeline are as follows.
+
+- `PIPELINE_NAME` (str): The name of the pipeline, used for saving results and in memory context
+- `CHATBOT_MODEL` (str): The LLM model used in the chatbot reasoning. (gpt-3.5-turbo, gpt-4)
+- `DISABLE_MEMORY` (bool): Disables the chatbot memory feature in the evaluation (Accepted values: false or true)
+- `DISABLE_FAQ` (bool): Disable the chatbot FAQ feature in the review (Accepted values: false or true)
+- `USE_NSX_SENSE` (bool): Use NSX-Sense in chatbot search feature (Accepted values: false or true)
+- `MAX_DATASET_QUESTIONS` (int): Set the maximum number of questions from each Dataset to use in the evaluation (-1 to use all questions)
+- `MAX_VARIANT_QUESTIONS` (int): Set the maximum number of variants of a question to use in the evaluation (-1 to use all variants)

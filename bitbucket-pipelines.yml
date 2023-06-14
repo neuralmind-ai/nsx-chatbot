@@ -1,0 +1,55 @@
+image: python:3.10
+
+definitions:
+  steps:
+    - step: &evaluate
+        name: Evaluate
+        caches:
+          - pip
+        script:
+          - ssh-keyscan -H $DEV_IP >> ~/.ssh/known_hosts
+          - ssh -NL 7000:localhost:7000 -f ubuntu@$DEV_IP
+          - cd src
+          - pip install -r validation/eval_requirements.txt
+          - python validation/pipeline.py
+        artifacts:
+          - src/validation/data/**
+          - src/validation/config/database.jsonl
+          - src/validation/config/memory.json
+
+pipelines:
+  branches:
+    master:
+      - step: *evaluate
+
+  custom:
+    evaluation-pipeline:
+      - variables:
+          - name: PIPELINE_NAME
+            default: chatbot_eval
+          - name: CHATBOT_MODEL
+            default: gpt-3.5-turbo-azure
+            allowed-values:
+              - gpt-3.5-turbo-azure
+              - gpt-3.5-turbo
+              - gpt-4
+          - name: DISABLE_MEMORY
+            default: false
+            allowed-values:
+              - false
+              - true
+          - name: DISABLE_FAQ
+            default: false
+            allowed-values:
+              - false
+              - true
+          - name: USE_NSX_SENSE
+            default: false
+            allowed-values:
+              - false
+              - true
+          - name: MAX_DATASET_QUESTIONS
+            default: -1
+          - name: MAX_VARIANT_QUESTIONS
+            default: -1
+      - step: *evaluate
