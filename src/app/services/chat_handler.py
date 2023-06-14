@@ -232,7 +232,7 @@ class ChatHandler:
             if self.verbose:
                 print(f"Thought {i}: {thought}")
                 print(f"Action {i}: {action}")
-            debug_string += f"Thought {i}: {thought}\nAction {i}: {action}\n"
+            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action}\n"
 
             try:
                 # Regex for matching what's between square brackets, or after the opening square bracket (sometimes the model forgets to close it).
@@ -257,12 +257,10 @@ class ChatHandler:
                 if self.verbose:
                     print(f"Observation {i}: {observation}")
                 if isinstance(observation, list):
-                    debug_string += f"Observation {i} (from NSX): "
-                    for position, obs in enumerate(observation):
-                        debug_string += f"Document {position}: {obs}\n"
                     observation = observation[0]
+                    debug_string += f"Observação {i} (NSX): {observation}"
                 else:
-                    debug_string += f"Observation {i} (from FAQ): {observation}\n"
+                    debug_string += f"Observação {i} (FAQ): {observation}\n"
 
             # Adds the thought, action and observation to the iteration string
             iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action}\nObservação {i}: {observation}\n"
@@ -325,10 +323,13 @@ class ChatHandler:
                 {
                     "user_id": user_id,
                     "user_message": user_message,
-                    "answer": answer,
+                    "index": index,
+                    "index_domain": index_domain,
                     "reasoning": debug_string,
+                    "answer": answer,
                     "timestamp": date,
-                }
+                },
+                ensure_ascii=False,
             )
         )
 
