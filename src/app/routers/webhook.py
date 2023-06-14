@@ -137,8 +137,11 @@ def is_message_a_question(
     menu_button_message = request.headers.get("menu-button-message", None)
     request_menu_message = request.headers.get("request-menu-message", None)
 
+    if menu_message is None:
+        menu_message = settings.menu_message
     if request_menu_message is None:
         request_menu_message = settings.request_menu_message
+        request_command = request_menu_message.split(" ")[-1]
     else:
         # The request_menu_message must be a string ending with #command
         request_command = request_menu_message.split(" ")[-1]

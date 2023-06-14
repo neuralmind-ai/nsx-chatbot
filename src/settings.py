@@ -47,8 +47,8 @@ class Settings(BaseSettings):
 
     # IndexMenu
     menu_message = "Olá. Escolha um dos itens abaixo para iniciar a conversa."
-    selection_message: str = "Selecione um edital"
-    request_menu_message: str = "#edital"
+    selection_message: str = "Selecione um item"
+    request_menu_message: str = "Para selecionar outro item futuramente, envie #menu"
 
     # Azure key vault
     azure_vault_url: str = "https://nm-chatbot-keys.vault.azure.net/"
