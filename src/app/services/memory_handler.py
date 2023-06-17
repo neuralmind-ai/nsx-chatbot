@@ -175,7 +175,7 @@ class RedisMemoryHandler(MemoryHandler):
             self.client.hset(user_id, index, message)
         else:
             current_history = self.retrieve_history(user, chatbot_id, index)
-            updated_history = current_history + "\n" + message
+            updated_history = current_history + message
             self.client.hset(user_id, index, updated_history)
         self.client.expire(user_id, settings.expiration_time_in_seconds)
 

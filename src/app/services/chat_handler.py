@@ -1,5 +1,4 @@
 import json
-import re
 import time
 import traceback
 from datetime import datetime
@@ -73,9 +72,11 @@ class ChatHandler:
         self.chat_prompt = prompts[self.language]["chat_prompt"]
         self.faq_prompt = prompts[self.language]["faq_prompt"]
         self.summary_prompt = prompts[self.language]["new_summary_prompt"]
-        self.message_extractor_prompt = prompts[self.language][
-            "message_extractor_prompt"
-        ]
+
+        # Useful prompt snippets:
+        self.answer_not_found = prompts[self.language]["answer_not_found"]
+        self.unanswerable_search = prompts[self.language]["unanswerable_search"]
+        self.forced_finish = prompts[self.language]["forced_finish"]
 
         # Loads the FAQs
         self.faq = self.load_faqs("app/faqs")
@@ -103,22 +104,6 @@ class ChatHandler:
         for faq in faq_files:
             faqs[faq.split("/")[-1].split(".")[0]] = json.load(open(faq, "r"))
         return faqs
-
-    def message_extractor(self, action: str) -> str:
-
-        """
-        Extracts the input message from an action using the language model.
-
-        Args:
-            - action: action from with we need to extract an input message
-
-        Returns:
-            - string containing the extracted action
-        """
-
-        prompt = self.message_extractor_prompt + action + "\n\nResposta:"
-
-        return self.get_reasoning(prompt)
 
     def dev_mode_action(self, message: str) -> str:
         """Manage dev mode special actions
@@ -199,7 +184,7 @@ class ChatHandler:
 
         index_domain = self._db.get_index_information(index, "domain")
         if not index_domain:
-            index_domain = "os documentos em minha base de dados"
+            index_domain = "documentos em minha base de dados"
         full_chat_prompt = self.chat_prompt.format(domain=index_domain)
         prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
@@ -223,35 +208,46 @@ class ChatHandler:
                 thought = reasoning.split("\n")[0]
                 action = self.get_reasoning(
                     f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
-                    stop=["\n"],
+                    stop=[f"Observação {i}:", "Mensagem:"],
                 )
 
-            thought, action = thought.strip(), action.strip()
+            try:
+                action_type, action_input = action.split(f"\nTexto da ação {i}:")
+            except Exception:
+                # Occurs if there is no action input
+                action_type = action.split("\n")[0]
+                action_input = self.get_reasoning(
+                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:{action_type}\nTexto da Ação {i}:",
+                    stop=[f"Observação {i}:", "Mensagem:"],
+                )
+
+            thought, action_type, action_input = (
+                thought.strip(),
+                action_type.strip(),
+                action_input.strip(),
+            )
 
             # Prints the reasoning
             if self.verbose:
                 print(f"Thought {i}: {thought}")
-                print(f"Action {i}: {action}")
-            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action}\n"
+                print(f"Action {i}: {action_type}")
+                print(f"Input of Action {i}: {action_input}")
+            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}"
 
-            try:
-                # Regex for matching what's between square brackets, or after the opening square bracket (sometimes the model forgets to close it).
-                action_input = re.search(
-                    "(?<=[\[(<{\"'])(.|\n)*(?=[\])>}\"'])|(?<=[\[(<{\"'])(.|\n)*",
-                    action,
-                ).group()
-            except Exception:
-                # In the case that the regex fails, we use the LLM for extracting the desired text
-                action_input = self.message_extractor(action)
-
-            if action.startswith("Finalizar"):
+            if action_type.startswith("Finalizar"):
                 done = True
                 answer = action_input
                 break
             else:
+
+                # In case the next observation fails to retrieve useful information,
+                # we will induce the model to try again if there is still room for searches
+                # The -1 accounts for the last Finish step after the searches
+                searches_left = settings.max_num_reasoning - i - 1
+
                 # If the action is not to finish, gets an observation
                 observation = self.get_observation(
-                    action_input, index, used_faq, latency_dict, api_key
+                    action_input, index, used_faq, latency_dict, api_key, searches_left
                 )
 
                 if self.verbose:
@@ -263,7 +259,7 @@ class ChatHandler:
                     debug_string += f"Observação {i} (FAQ): {observation}\n"
 
             # Adds the thought, action and observation to the iteration string
-            iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action}\nObservação {i}: {observation}\n"
+            iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\nObservação {i}: {observation}\n"
 
             # Checks if the number of tokens is under the limit
             total_tokens = self.get_num_tokens(prompt + iteration_string)
@@ -275,19 +271,10 @@ class ChatHandler:
 
         # If the reasoning is not done, forces the finish
         if not done:
-            action = self.get_reasoning(
-                f"{prompt}Pensamento Final: Máximo número de iteracões atingido. Devo responder com as informações que tenho até agora.\nAção: Finalizar["
-            )
+            answer = self.get_reasoning(self.forced_finish.format(prompt=prompt))
             if self.verbose:
-                print(f"Finalizar Forçado: {action}")
-            debug_string += f"Finalizar Forçado: {action}\n"
-
-            try:
-                # Regex for extracting the closing square brancket:
-                answer = re.search("(.|\n)*(?=\])", action).group()
-            except Exception:
-                # In the case that the model might have forgotten of adding the closing square bracket:
-                answer = action
+                print(f"Finalizar Forçado: {answer}")
+            debug_string += f"Finalizar Forçado: {answer}\n"
 
         # Moderates the answer
         if self.is_the_message_harmful(answer):
@@ -445,6 +432,7 @@ class ChatHandler:
         used_faq: list,
         latency_dict: Dict[str, float],
         api_key: str,
+        searches_left: int,
     ) -> Union[str, List]:
         """
         Returns the observation for the message.
@@ -455,6 +443,7 @@ class ChatHandler:
             - used_faq: list of queries that have already been used.
             - latency_dict: dictionary containing the latency for each step.
             - api_key: the user's API key to be used for the NSX API.
+            - searches_left: number of searches the model can still do for the current message.
 
         Returns:
             str: The answer to the query, if the query is in the FAQ, or
@@ -472,12 +461,14 @@ class ChatHandler:
         if observation == "irrespondível":
             if self.use_nsx_sense:
                 time_nsx_sense_answer = time.time()
-                observation = self.get_nsx_sense_answer(query, index, api_key)
+                observation = self.get_nsx_sense_answer(
+                    query, index, api_key, searches_left
+                )
                 latency_dict["nsx_sense_answer"] = time.time() - time_nsx_sense_answer
             else:
                 # Get the first document from NSX
                 time_nsx_answer = time.time()
-                observation = self.get_nsx_answer(query, index, api_key)
+                observation = self.get_nsx_answer(query, index, api_key, searches_left)
                 latency_dict["nsx_answer"] = time.time() - time_nsx_answer
 
             if self.verbose:
@@ -485,7 +476,9 @@ class ChatHandler:
 
         return observation
 
-    def get_nsx_answer(self, query: str, index: str, api_key: str) -> Union[List, str]:
+    def get_nsx_answer(
+        self, query: str, index: str, api_key: str, searches_left: int
+    ) -> Union[List, str]:
         """
         Gets the first document from NSX.
 
@@ -493,6 +486,7 @@ class ChatHandler:
             - query: the query to be sent to NSX.
             - index: the index to be used for the search.
             - api_key: the user's API key to be used for the NSX API.
+            - searches_left: number of searches the model can still do for the current message.
 
         Returns:
             List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
@@ -519,11 +513,15 @@ class ChatHandler:
                     for response_reranker in response["response_reranker"]
                 ]
                 return response_documents
+            elif searches_left == 0:
+                return self.unanswerable_search
             else:
-                return "Não foi possível encontrar sobre isso na minha base de dados"
+                return self.answer_not_found
         raise Exception(f"Error in NSX: {response.json()['message']}")
 
-    def get_nsx_sense_answer(self, query: str, index: str, api_key: str) -> str:
+    def get_nsx_sense_answer(
+        self, query: str, index: str, api_key: str, searches_left: int
+    ) -> str:
         """
         Gets a response using NSX sense.
 
@@ -531,6 +529,7 @@ class ChatHandler:
             - query: the query to be sent to NSX.
             - index: the index to be used for the search.
             - api_key: the user's API key to be used for the NSX API.
+            - searches_left: number of searches the model can still do for the current message.
 
         Returns:
             - A response built with NSX Sense.
@@ -558,12 +557,18 @@ class ChatHandler:
         ]
 
         if len(documents) == 0:
-            return "Essa pesquisa não retornou resultados relevantes."
+            if searches_left == 0:
+                return self.unanswerable_search
+            else:
+                return self.answer_not_found
 
-        answer = self.answer_from_docs(query, index, documents)
+        answer = self.answer_from_docs(query, index, documents, searches_left)
+
         return answer
 
-    def answer_from_docs(self, query: str, index: str, documents: list):
+    def answer_from_docs(
+        self, query: str, index: str, documents: list, searches_left: int
+    ):
         """
         Builds an answer for the query based on the documents, using MultidocQA.
 
@@ -571,6 +576,7 @@ class ChatHandler:
             - query: the query that is going to be answered
             - index: NSX index from which the documents were retrieved
             - documents: list of NSX response_reranker dicts
+            - searches_left: number of searches the model can still do for the current message.
 
         Returns:
             - An answer for the query based on the documents
@@ -591,7 +597,10 @@ class ChatHandler:
         response = response.json()["pred_answer"]
 
         if "irrespondível" in response.lower():
-            return "Essa pesquisa não retornou resultados relevantes."
+            if searches_left == 0:
+                return self.unanswerable_search
+            else:
+                return self.answer_not_found
         else:
             return response
 
