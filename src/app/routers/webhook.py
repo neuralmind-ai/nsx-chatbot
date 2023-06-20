@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Union
 
 from fastapi import APIRouter, BackgroundTasks, Request
+from requests.exceptions import Timeout
 
 from app.schemas.messages import WebhookMessage, WebhookStatus
 from app.services.build_timed_logger import build_timed_logger
@@ -68,10 +69,28 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                         "error": str(ve),
                         "traceback": traceback.format_exc(),
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
+                    },
+                    ensure_ascii=False,
                 )
             )
             raise ve
+        except Timeout as te:
+            user_message = body.messages[0]["text"]["body"]
+            timeout_message = "Parece que o servidor está demorando muito para responder. Por favor, tente novamente mais tarde."
+            post_360_dialog_text_message(destinatary, timeout_message, nm_number)
+            error_logger.error(
+                json.dumps(
+                    {
+                        "user_id": destinatary,
+                        "user_message": user_message,
+                        "error": str(te),
+                        "traceback": traceback.format_exc(),
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            raise te
         except Exception as e:
             current_index = request.app.state.memory.get_latest_user_index(
                 destinatary, nm_number
@@ -88,7 +107,8 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                         "error": str(e),
                         "traceback": traceback.format_exc(),
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
+                    },
+                    ensure_ascii=False,
                 )
             )
             raise e
@@ -101,7 +121,8 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                     "message": message,
                     "type": "NSX request at index " + current_index,
                     "response": answer,
-                }
+                },
+                ensure_ascii=False,
             )
         )
 

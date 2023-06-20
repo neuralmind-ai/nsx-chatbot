@@ -11,6 +11,7 @@ import tiktoken
 from app.schemas.database_item import Item
 from app.services.database import DBManager
 from app.services.memory_handler import MemoryHandler
+from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
 from settings import settings
 
 from .build_timed_logger import build_timed_logger
@@ -409,21 +410,32 @@ class ChatHandler:
                 "stop": stop,
             },
         }
-        response = requests.post(settings.completion_endpoint, json=body)
-        if not response.ok:
-            error_logger.error(
-                json.dumps(
-                    {
-                        "prompt": prompt,
-                        "stop": stop,
-                        "status_code": response.status_code,
-                        "service": "prompt_answerer",
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                )
+        try:
+            response = retry_request_with_timeout(
+                RequestMethod.POST,
+                settings.completion_endpoint,
+                body=body,
+                request_timeout=settings.reasoning_timeout,
             )
-            raise Exception("Error in reasoning")
-        return response.json()["text"].strip()
+            if not response.ok:
+                error_logger.error(
+                    json.dumps(
+                        {
+                            "prompt": prompt,
+                            "stop": stop,
+                            "status_code": response.status_code,
+                            "service": "prompt_answerer",
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                raise Exception("Error in reasoning")
+            return response.json()["text"].strip()
+        except requests.exceptions.Timeout as te:
+            raise te
+        except Exception as e:
+            raise e
 
     def get_observation(
         self,
@@ -503,8 +515,16 @@ class ChatHandler:
         headers = {
             "Authorization": f"APIKey {api_key}",
         }
-        response = requests.get(settings.nsx_endpoint, params=params, headers=headers)
-
+        try:
+            response = retry_request_with_timeout(
+                RequestMethod.GET,
+                settings.nsx_endpoint,
+                params=params,
+                headers=headers,
+                request_timeout=settings.nsx_timeout,
+            )
+        except requests.exceptions.Timeout as te:
+            raise te
         if response.ok:
             response = response.json()
             if len(response["response_reranker"]) > 0:
@@ -545,7 +565,16 @@ class ChatHandler:
         headers = {
             "Authorization": f"APIKey {api_key}",
         }
-        response = requests.get(settings.nsx_endpoint, params=params, headers=headers)
+        try:
+            response = retry_request_with_timeout(
+                RequestMethod.GET,
+                settings.nsx_endpoint,
+                params=params,
+                headers=headers,
+                request_timeout=settings.nsx_sense_timeout,
+            )
+        except requests.exceptions.Timeout as te:
+            raise te
         if not response.ok:
             raise Exception(f"Error in NSX: {response.json()['message']}")
 
@@ -619,7 +648,6 @@ class ChatHandler:
         Returns:
             - the answer for the query.
         """
-
         # Gets the top questions from the FAQ that are similar to the query
         time_nsx_score = time.time()
         try:

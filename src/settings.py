@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     cosmos_container_name: str = "chatHistory"
     cosmos_index_container_name: str = "chatIndexConfig"
 
+    # Timeouts and retries
+    max_retries: int = 3
+    nsx_timeout: int = 5
+    nsx_sense_timeout: int = 10
+    reasoning_timeout: int = 15
+
     class Config:
         env_file = ".env"
 
