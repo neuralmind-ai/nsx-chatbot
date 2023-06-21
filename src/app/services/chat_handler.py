@@ -13,6 +13,7 @@ from app.services.database import DBManager
 from app.services.memory_handler import MemoryHandler
 from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
 from settings import settings
+from app.prompts import base_prompt
 
 from .build_timed_logger import build_timed_logger
 
@@ -63,9 +64,8 @@ class ChatHandler:
             to get the answer instead of nsx_seach (EXPERIMENTAL)
         """
         # Loads all prompts
-        prompts = json.load(
-            open("app/prompts/base_prompt_pt.json", "r", encoding="utf8")
-        )
+        prompts = base_prompt.prompts
+
         # TODO: add support for other languages
         self.language = "pt"
 
