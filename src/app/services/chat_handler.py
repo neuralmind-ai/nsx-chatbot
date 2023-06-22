@@ -3,12 +3,13 @@ import time
 import traceback
 from datetime import datetime
 from glob import glob
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple
 
 import requests
 import tiktoken
 
 from app.schemas.database_item import Item
+from app.schemas.search import SearchTool
 from app.services.database import DBManager
 from app.services.memory_handler import MemoryHandler
 from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
@@ -46,7 +47,7 @@ class ChatHandler:
         verbose: bool = False,
         return_debug: bool = False,
         dev_mode: bool = False,
-        disable_faq: bool = False,
+        disable_faq: bool = True,
         disable_memory: bool = False,
         use_nsx_sense: bool = False,
     ):
@@ -233,7 +234,7 @@ class ChatHandler:
                 print(f"Thought {i}: {thought}")
                 print(f"Action {i}: {action_type}")
                 print(f"Input of Action {i}: {action_input}")
-            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}"
+            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\n"
 
             if action_type.startswith("Finalizar"):
                 done = True
@@ -247,17 +248,14 @@ class ChatHandler:
                 searches_left = settings.max_num_reasoning - i - 1
 
                 # If the action is not to finish, gets an observation
-                observation = self.get_observation(
+                observation, tool = self.get_observation(
                     action_input, index, used_faq, latency_dict, api_key, searches_left
                 )
 
                 if self.verbose:
-                    print(f"Observation {i}: {observation}")
-                if isinstance(observation, list):
-                    observation = observation[0]
-                    debug_string += f"Observação {i} (NSX): {observation}"
-                else:
-                    debug_string += f"Observação {i} (FAQ): {observation}\n"
+                    print(f"Observation {i} (FROM {tool}): {observation}")
+
+                debug_string += f"Observação {i} ({tool}): {observation}\n"
 
             # Adds the thought, action and observation to the iteration string
             iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\nObservação {i}: {observation}\n"
@@ -445,7 +443,7 @@ class ChatHandler:
         latency_dict: Dict[str, float],
         api_key: str,
         searches_left: int,
-    ) -> Union[str, List]:
+    ) -> Tuple[str, SearchTool]:
         """
         Returns the observation for the message.
 
@@ -467,6 +465,7 @@ class ChatHandler:
             time_faq_answer = time.time()
             observation = self.get_faq_answer(query, index, used_faq, latency_dict)
             latency_dict["faq_answer"] = time.time() - time_faq_answer
+            tool = SearchTool.FAQ
         else:
             observation = "irrespondível"
 
@@ -477,20 +476,24 @@ class ChatHandler:
                     query, index, api_key, searches_left
                 )
                 latency_dict["nsx_sense_answer"] = time.time() - time_nsx_sense_answer
+                tool = SearchTool.SENSE
             else:
                 # Get the first document from NSX
                 time_nsx_answer = time.time()
                 observation = self.get_nsx_answer(query, index, api_key, searches_left)
                 latency_dict["nsx_answer"] = time.time() - time_nsx_answer
+                tool = SearchTool.NSX
 
-            if self.verbose:
-                print("Got the answer from NSX")
-
-        return observation
+        return observation, tool
 
     def get_nsx_answer(
-        self, query: str, index: str, api_key: str, searches_left: int
-    ) -> Union[List, str]:
+        self,
+        query: str,
+        index: str,
+        api_key: str,
+        searches_left: int,
+        num_docs: int = 1,
+    ) -> str:
         """
         Gets the first document from NSX.
 
@@ -499,9 +502,10 @@ class ChatHandler:
             - index: the index to be used for the search.
             - api_key: the user's API key to be used for the NSX API.
             - searches_left: number of searches the model can still do for the current message.
+            - num_docs: number of documents to be returned by NSX.
 
         Returns:
-            List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
+            str: The answer to the query (with concatenated num_docs from NSX) or
             str: A string telling the chatbot that the answer was not found on NSX.
         """
         # Parameters for the request
@@ -527,12 +531,12 @@ class ChatHandler:
             raise te
         if response.ok:
             response = response.json()
-            if len(response["response_reranker"]) > 0:
-                response_documents = [
-                    response_reranker["paragraphs"][0]
-                    for response_reranker in response["response_reranker"]
-                ]
-                return response_documents
+            response_len = len(response["response_reranker"])
+            if response_len > 0:
+                docs = ""
+                for i in range(min(num_docs, response_len)):
+                    docs += f"{response['response_reranker'][i]['paragraphs'][0]}\n"
+                return docs.strip()
             elif searches_left == 0:
                 return self.unanswerable_search
             else:
@@ -681,8 +685,6 @@ class ChatHandler:
         # Returns the exact answer if the question is in the FAQ
         if response in self.faq[index]:
             used_faq.append(response)
-            if self.verbose:
-                print("Found the answer in the FAQ")
             return self.faq[index][response]
 
         # If the response does not match any question
@@ -691,8 +693,6 @@ class ChatHandler:
         for question in top_questions:
             if question in response:
                 used_faq.append(question)
-                if self.verbose:
-                    print("Found the answer in the FAQ")
                 return self.faq[index][question]
 
         return "irrespondível"

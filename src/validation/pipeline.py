@@ -24,6 +24,36 @@ from app.services.memory_handler import JSONMemoryHandler
 from validation.pipeline_settings import PipelineSettings
 
 
+class AnswerLog(BaseModel):
+    index: str = Field(..., description="Index name")
+    domain: str = Field(..., description="Index Domain description")
+    tag: str = Field(..., description="Evaluation description tag")
+    question: str = Field(..., description="Dataset Question")
+    gold_answer: str = Field(..., description="Dataset Gold Answer")
+    chatbot_answer: str = Field(..., description="Chatbot Answer")
+    reasoning: str = Field(..., description="chatbot reasoning steps log")
+    latency: float = Field(..., description="Latency in seconds")
+    evaluation: str = Field(
+        default="incorrect", description="Evaluation result (correct, incorrect)"
+    )
+
+
+class EvaluationConfig(BaseModel):
+    tag: str = Field(..., description="Evaluation description tag")
+    index: str = Field(..., description="Index name")
+    domain: str = Field(..., description="Index Domain description")
+    memory: bool = Field(..., description="Use Memory")
+    faq: bool = Field(..., description="Use FAQ")
+    sense: bool = Field(..., description="Use Sense")
+    unique_questions: int = Field(..., description="Number of unique questions")
+    question_variants: int = Field(..., description="Number of question variants")
+
+
+class EvaluationLog(BaseModel):
+    eval_config: EvaluationConfig
+    log: List[AnswerLog] = Field(..., description="List of answers")
+
+
 class EvaluationParams(BaseModel):
     """Evaluation parameters
 
@@ -31,11 +61,13 @@ class EvaluationParams(BaseModel):
     """
 
     index: str = Field(..., description="Index name")
+    domain: str = Field(..., description="Index Domain description")
     chatbot_id: str = Field(..., description="Chatbot ID")
     chat_id: str = Field(..., description="Chat Session ID")
     dataset_path: Path = Field(..., description="Dataset path")
     evaluation_path: Path = Field(..., description="Evaluation path")
     responses_path: Path = Field(..., description="Responses path")
+    log_path: Path = Field(..., description="Evaluation log path")
     pa_endpoint: str = Field(..., description="Prompt-answerer endpoint")
     max_dataset_questions: int = Field(
         ..., description="Max questions used from dataset"
@@ -145,7 +177,10 @@ class EvalDataManager:
 
 
 def evaluate(
-    chatbot: ChatHandler, data_manager: EvalDataManager, params: EvaluationParams
+    chatbot: ChatHandler,
+    data_manager: EvalDataManager,
+    params: EvaluationParams,
+    settings: PipelineSettings,
 ) -> DatasetEvaluation:
     """Evaluate Chatbot answers for a Dataset
 
@@ -153,6 +188,7 @@ def evaluate(
         chatbot (ChatHandler): Chatbot handler
         data_manager (EvalDataManager): Data Manager for evaluation data
         params (EvaluationParams): Evaluation parameters
+        settings (PipelineSettings): Pipeline settings
 
     Returns:
         DatasetEvaluation: Dataset evaluation
@@ -161,16 +197,27 @@ def evaluate(
     # Load dataset
     dataset = data_manager.get_dataset(local_path=params.dataset_path)
 
+    # Max number of questions to evaluate
+    max_questions = (
+        params.max_dataset_questions
+        if params.max_dataset_questions != -1
+        else len(dataset.questions)
+    )
+
+    # Max number of variants of a question to evaluate
+    max_variants = (
+        params.max_variant_questions
+        if params.max_variant_questions != -1
+        else len(dataset.questions[0].variants)
+    )
+
+    # store the log of the evaluation for each question
+    responses_log: List[AnswerLog] = []
+
     # Build chatbot answers for the dataset questions
     # Use rich.Progress to display progress bars for dataset and question variant
     responses = []
     with Progress() as progress:
-        # Max number of questions to evaluate
-        max_questions = (
-            params.max_dataset_questions
-            if params.max_dataset_questions != -1
-            else len(dataset.questions)
-        )
         # Dataset Progress Bar
         dataset_task = progress.add_task(
             f"{dataset.index} dataset progress",
@@ -178,12 +225,6 @@ def evaluate(
         )
 
         for qi, question in enumerate(dataset.questions[:max_questions]):
-            # Max number of variants of a question to evaluate
-            max_variants = (
-                params.max_variant_questions
-                if params.max_variant_questions != -1
-                else len(question.variants)
-            )
             # Question variants progress bar
             variants_task = progress.add_task(
                 f"Variants of question {qi}",
@@ -209,7 +250,27 @@ def evaluate(
                 answer_latency = time.time() - answer_start
                 variants_latencies.append(answer_latency)
 
-                variants.append(chatbot_answer)
+                # Check if it is in debug mode to get the evaluation log
+                if chatbot.return_debug:
+                    try:
+                        reasoning, chatbot_answer = chatbot_answer.split("Answer:")
+                    except Exception:
+                        reasoning = ""
+
+                    responses_log.append(
+                        AnswerLog(
+                            index=params.index,
+                            domain=params.domain,
+                            tag=params.chat_id,
+                            question=variant,
+                            gold_answer=question.answer,
+                            chatbot_answer=chatbot_answer.strip(),
+                            reasoning=reasoning.strip(),
+                            latency=answer_latency,
+                        )
+                    )
+
+                variants.append(chatbot_answer.strip())
                 progress.advance(variants_task)
 
             responses.append(
@@ -242,6 +303,35 @@ def evaluate(
             local_path=params.evaluation_path,
         )
 
+        # Update evaluation logs with the evaluation results
+        # The results are stored in the same order as the answer_logs
+        idx = 0
+        for qa_evaluation in dataset_evaluation.qa_evaluations:
+            for evaluation in qa_evaluation.evaluations:
+                if evaluation:
+                    responses_log[idx].evaluation = "correto"
+                else:
+                    responses_log[idx].evaluation = "incorreto"
+                idx += 1
+
+        # Save evaluation logs
+        eval_log = EvaluationLog(
+            eval_config=EvaluationConfig(
+                tag=params.chat_id,
+                index=params.index,
+                domain=params.domain,
+                memory=(not settings.disable_memory),
+                faq=(not settings.disable_faq),
+                sense=settings.use_nsx_sense,
+                unique_questions=max_questions,
+                question_variants=max_variants,
+            ),
+            log=responses_log,
+        )
+
+        with params.log_path.open("w") as f:
+            json.dump(eval_log.dict(), f, ensure_ascii=False, indent=4)
+
         return dataset_evaluation
 
     except Exception as e:
@@ -269,13 +359,18 @@ if __name__ == "__main__":
         use_nsx_sense=settings.use_nsx_sense,
         dev_mode=settings.dev_mode,
         verbose=settings.verbose,
+        return_debug=settings.return_debug,
     )
 
     data_manager = EvalDataManager(settings=settings)
 
     # Create data dir
-    data_dir = Path(settings.data_dir)
+    data_dir = Path(settings.validation_data_dir, settings.pipeline_name)
     data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create log dir
+    log_dir = Path(settings.validation_log_dir, settings.pipeline_name)
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     evaluations_path = (
         data_dir
@@ -291,11 +386,13 @@ if __name__ == "__main__":
     evaluations = [
         EvaluationParams(
             index=index,
+            domain=database.get_index_information(index, "domain"),
             chatbot_id=f"{index}_chat",
             chat_id=settings.pipeline_name,
             dataset_path=data_dir / f"{index}_dataset.json",
             evaluation_path=evaluations_path,
             responses_path=data_dir / f"{index}_answers.json",
+            log_path=log_dir / f"{index}_log.json",
             pa_endpoint=settings.prompt_answerer_endpoint,
             max_dataset_questions=settings.max_dataset_questions,
             max_variant_questions=settings.max_variant_questions,
@@ -303,11 +400,24 @@ if __name__ == "__main__":
         for index in indexes
     ]
 
+    # Print Evaluation Settings
+    print("Evaluation Settings:")
+    print("Pipeline Name:", settings.pipeline_name)
+    print("Chatbot Model:", settings.chatbot_model)
+    print("Disable Memory:", settings.disable_memory)
+    print("Disable FAQ:", settings.disable_faq)
+    print("Use NSX Sense:", settings.use_nsx_sense)
+
     # Evaluate All the datasets (1-by-1)
     results = []
     for params in evaluations:
-        evaluation = evaluate(chatbot=chatbot, data_manager=data_manager, params=params)
+        evaluation = evaluate(
+            chatbot=chatbot, data_manager=data_manager, params=params, settings=settings
+        )
         if evaluation:
+            print(
+                f"Index: [green]{params.index}[/] - ACC: [red]{evaluation.metrics['accuracy']:.2f}[/]"
+            )
             results.append(evaluation)
 
     # Upload the evaluation for the DataStore (Evaluation Container)

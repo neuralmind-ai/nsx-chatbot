@@ -13,9 +13,10 @@ class PipelineSettings(BaseSettings):
     evalchatbot_evaluation_container: str = "evaluations"
 
     # Pipeline Settings
-    data_dir = "validation/data"  # Path to store the data
+    validation_data_dir = "validation/data"  # Path to store the data
+    validation_log_dir = "validation/logs"  # Path to store the logs
 
-    pipeline_name: str = "chatbot_eval"
+    pipeline_name: str
     max_dataset_questions: int = -1  # -1 for all questions
     max_variant_questions: int = -1  # -1 for all questions
 
@@ -26,6 +27,7 @@ class PipelineSettings(BaseSettings):
     use_nsx_sense: bool = False
     dev_mode: bool = False
     verbose: bool = False
+    return_debug: bool = True
 
     database_path: str = "validation/config/database.jsonl"
     memory_path: str = "validation/config/memory.json"

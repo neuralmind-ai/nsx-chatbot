@@ -11,3 +11,4 @@ venv
 src/validation/data/*
 src/validation/config/database.jsonl
 src/validation/config/memory.json
+src/validation/logs/*

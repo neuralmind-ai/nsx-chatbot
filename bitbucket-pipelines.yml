@@ -14,6 +14,7 @@ definitions:
           - python validation/pipeline.py
         artifacts:
           - src/validation/data/**
+          - src/validation/logs/**
           - src/validation/config/database.jsonl
           - src/validation/config/memory.json
 
@@ -51,5 +52,5 @@ pipelines:
           - name: MAX_DATASET_QUESTIONS
             default: -1
           - name: MAX_VARIANT_QUESTIONS
-            default: -1
+            default: 1
       - step: *evaluate
