@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     moderation_endpoint: str = "http://localhost:7000/api/openai/moderations"
     max_tokens_prompt: int = 4000
 
+    # CORS
+    # TODO: Change this to allow only the client's domain
+    cors_origins = ["*"]
+
     # Neuralsearchx
     api_key: str = ""
     max_docs_to_return: int = 5
