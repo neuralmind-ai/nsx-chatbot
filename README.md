@@ -49,3 +49,20 @@ python validation/pipeline.py
 > Remember that the prompt-answerer must be running at `localhost:7000` for the chatbot and evaluation to work correctly.
 
 At the end of the experiment, a table with a summary of the results is displayed. The data and logs of the experiment will be available in the `validation/data` and `validation/logs` directories, respectively. The files are identified by the name defined in `PIPELINE_NAME`.
+
+## Debug Chat
+
+Para testar o chat, recomendamos usar o script `debug_chat` (deve ser invocado a partir do diretorio `src`):
+To test chat handler, you can use the `debug_chat.py` script, which should be launched from the `src` folder:
+
+```
+> cd src
+> python debug_chat.py
+```
+
+You can feed the script parameters, like:
+
+```
+> python debug_chat --help
+> python debug_chat.py --user fulano --index FUNDEP_Ciencias  --disable-faq --disable-mem --use-nsx --verbose --dev
+```

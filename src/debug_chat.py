@@ -4,12 +4,23 @@ python debug_chat.py
 """
 
 from rich import print
+import argparse
 
 from app.services.chat_handler import ChatHandler
 
 # from app.services.memory_handler import RedisMemoryHandler
 from app.services.database import JSONLDBManager
 from app.services.memory_handler import JSONMemoryHandler
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--user')
+parser.add_argument('--index', '-i')
+parser.add_argument('--dev', action=argparse.BooleanOptionalAction)
+parser.add_argument('--disable-faq', action=argparse.BooleanOptionalAction)
+parser.add_argument('--disable-mem', action=argparse.BooleanOptionalAction)
+parser.add_argument('--use-nsx', action=argparse.BooleanOptionalAction)
+parser.add_argument('--verbose', action=argparse.BooleanOptionalAction)
+args = parser.parse_args()
 
 # memory_handler = RedisMemoryHandler(host="localhost", port=6380)
 memory_handler = JSONMemoryHandler(path=".cache/memory.json")
@@ -19,26 +30,27 @@ db_manager = JSONLDBManager(
 
 chat_bot_id = "chatbot"
 
+def bool_parser(v):
+    return True if v.strip() in ("y", "") else False
+
+
+def get_arg(arg_value, prompt, parser=None):
+    if arg_value is not None:
+        return arg_value
+    else:
+        v = input(prompt)
+        if parser is not None:
+            return parser(v)
+
+user_id = get_arg(args.user, "User_ID: ")
+index = get_arg(args.index, "Index: ")
+
 print("--------[blue]Chatbot Settings[/]--------")
-user_id = input("User_ID: ")
-index = input("Index: ")
-
-# Dev mode
-dev_mode = input("Dev mode? ([y]/n): ")
-dev_mode = True if dev_mode.strip() in ("y", "") else False
-# Disable FAQ
-disable_faq = input("Disable FAQ? ([y]/n): ")
-disable_faq = True if disable_faq.strip() in ("y", "") else False
-# Disable Memory
-disable_memory = input("Disable Memory? ([y]/n): ")
-disable_memory = True if disable_memory.strip() in ("y", "") else False
-# Use NSX Sense
-use_nsx_sense = input("Use NSX Sense? ([y]/n): ")
-use_nsx_sense = True if use_nsx_sense.strip() in ("y", "") else False
-# Verbose
-verbose = input("Verbose? ([y]/n): ")
-verbose = True if verbose.strip() in ("y", "") else False
-
+dev_mode = get_arg(args.dev, "Dev mode? ([y]/n): ", bool_parser)
+disable_faq = get_arg(args.disable_faq, "Disable FAQ? ([y]/n): ", bool_parser)
+disable_memory = get_arg(args.disable_mem, "Disable Memory? ([y]/n): ", bool_parser)
+use_nsx_sense = get_arg(args.use_nsx, "Use NSX Sense? ([y]/n): ", bool_parser)
+verbose = get_arg(args.verbose, "Verbose? ([y]/n): ", bool_parser)
 
 chat_bot = ChatHandler(
     db=db_manager,
