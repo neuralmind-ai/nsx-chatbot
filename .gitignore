@@ -1,6 +1,7 @@
 __pycache__
 .env
 src/logs/*
+*.log
 
 !logs/.gitkeep
 
@@ -12,3 +13,5 @@ src/validation/data/*
 src/validation/config/database.jsonl
 src/validation/config/memory.json
 src/validation/logs/*
+
+src/playground_prompts/*
