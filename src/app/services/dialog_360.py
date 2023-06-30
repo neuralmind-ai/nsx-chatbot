@@ -81,6 +81,7 @@ def post_360_dialog_intro_message(
     d360_number: str,
     destinatary_history: str,
     db: DBManager,
+    force_intro: bool = False,
 ):
     """
     Sends a message introducing the chatbot to the user, by using the information from the index configuration in CosmosDB.
@@ -91,9 +92,13 @@ def post_360_dialog_intro_message(
         index (str): The index name.
         d360_number (str): The chatbot's number.
         destinatary_history (str): The destinatary's conversation history, used to know if it is the first message in the conversation.
+        db (DBManager): The CosmosDB manager, used to get information about the index.
+        force_intro (bool): If True, the introduction message is sent even if the user has already sent a message.
     """
     message_prefix = db.get_index_information(index, "message_prefix")
-    if (destinatary_history is None) and (message_prefix is not None):
+    if (force_intro) and (message_prefix):
+        intro_message = message_prefix
+    elif (destinatary_history is None) and (message_prefix):
         intro_message = f"{message_prefix}\nPor favor, aguarde enquanto busco a resposta para sua pergunta..."
     else:
         intro_message = (

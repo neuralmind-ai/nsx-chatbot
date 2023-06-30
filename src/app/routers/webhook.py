@@ -142,9 +142,23 @@ def is_message_a_question(
     """
 
     if body.messages[0]["type"] == "interactive":
+        # The user selected a index from the menu:
         selected_index = body.messages[0]["interactive"]["list_reply"]["id"]
         request.app.state.memory.set_latest_user_index(
             destinatary, nm_number, selected_index
+        )
+        # Send intro message:
+        post_360_dialog_intro_message(
+            destinatary,
+            selected_index,
+            nm_number,
+            destinatary_history=None,
+            db=request.app.state.db,
+            force_intro=True,
+        )
+        # Save a space in the history, so the history is not empty anymore and the intro message won't be sent again
+        request.app.state.memory.save_history(
+            destinatary, nm_number, selected_index, " "
         )
         return False
 
