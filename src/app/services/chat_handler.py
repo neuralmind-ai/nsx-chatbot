@@ -2,26 +2,25 @@ import json
 import time
 import traceback
 from datetime import datetime
-from glob import glob
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 import requests
-import tiktoken
 
+from app.prompts import base_prompt
 from app.schemas.database_item import Item
 from app.schemas.search import SearchTool
 from app.services.database import DBManager
+from app.services.faq_search import FAQSearchTool
 from app.services.memory_handler import MemoryHandler
-from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
+from app.services.nsx_search import NSXSearchTool, NSXSenseSearchTool
+from app.utils import model_utils
+from app.utils.model_utils import (
+    chat_logger,
+    error_logger,
+    harmful_logger,
+    latency_logger,
+)
 from settings import settings
-from app.prompts import base_prompt
-
-from .build_timed_logger import build_timed_logger
-
-chat_logger = build_timed_logger("chat_logger", "chat.log")
-error_logger = build_timed_logger("error_logger", "error.log")
-harmful_logger = build_timed_logger("harmful_logger", "harmful.log")
-latency_logger = build_timed_logger("latency_logger", "latency.log")
 
 
 class ChatHandler:
@@ -36,7 +35,6 @@ class ChatHandler:
         get_nsx_answer: returns the answer from nsx.
         get_faq_answer: search for an answer in the faqs.
         get_chat_history: returns the chat history for the user.
-        get_num_tokens: returns the number of tokens in the text.
     """
 
     def __init__(
@@ -72,16 +70,12 @@ class ChatHandler:
 
         # Base prompts
         self.chat_prompt = prompts[self.language]["chat_prompt"]
-        self.faq_prompt = prompts[self.language]["faq_prompt"]
         self.summary_prompt = prompts[self.language]["new_summary_prompt"]
 
         # Useful prompt snippets:
         self.answer_not_found = prompts[self.language]["answer_not_found"]
         self.unanswerable_search = prompts[self.language]["unanswerable_search"]
         self.forced_finish = prompts[self.language]["forced_finish"]
-
-        # Loads the FAQs
-        self.faq = self.load_faqs("app/faqs")
 
         # Feature managers
         self._db = db
@@ -96,16 +90,9 @@ class ChatHandler:
         self.dev_mode = dev_mode
         self.use_nsx_sense = use_nsx_sense
 
-    def load_faqs(self, faq_folder: str):
-        """
-        Returns a dictionary with the faqs.
-        """
-        # TODO: Stop using json files for the faqs -> use a database
-        faq_files = glob(f"{faq_folder}/*.json")
-        faqs = {}
-        for faq in faq_files:
-            faqs[faq.split("/")[-1].split(".")[0]] = json.load(open(faq, "r"))
-        return faqs
+        self.faq_search = FAQSearchTool(self.language, self._model)
+        self.nsx_search = NSXSearchTool(self.language, settings.api_key)
+        self.nsx_sense_search = NSXSenseSearchTool(self.language, settings.api_key)
 
     def dev_mode_action(self, message: str) -> str:
         """Manage dev mode special actions
@@ -187,93 +174,24 @@ class ChatHandler:
         index_domain = self._db.get_index_information(index, "domain")
         if not index_domain:
             index_domain = "documentos em minha base de dados"
-        full_chat_prompt = self.chat_prompt.format(domain=index_domain)
-        prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
         # Checks if there is enough tokens available to process the message:
-        if self.get_num_tokens(prompt) > settings.max_tokens_prompt:
+        if (
+            model_utils.get_num_tokens(user_message)
+            + model_utils.get_num_tokens(chat_history)
+        ) > settings.max_tokens_prompt:
             return "Sua mensagem é muito longa para que eu consiga processá-la adequadamente. Por favor, escreva-a de modo mais conciso."
 
-        # Starts the reasoning loop
-        done = False
         time_pre_reasoning = time.time()
-        for i in range(1, settings.max_num_reasoning + 1):
-            # Adds the reasoning to the prompt
-            reasoning_prompt = f"{prompt}Pensamento {i}:"
-            reasoning = self.get_reasoning(
-                prompt=reasoning_prompt, stop=[f"Observação {i}:", "Mensagem:"]
-            )
-            try:
-                thought, action = reasoning.split(f"\nAção {i}:")
-            except Exception:
-                # Occurs if there is no action
-                thought = reasoning.split("\n")[0]
-                action = self.get_reasoning(
-                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
-                    stop=[f"Observação {i}:", "Mensagem:"],
-                )
-
-            try:
-                action_type, action_input = action.split(f"\nTexto da ação {i}:")
-            except Exception:
-                # Occurs if there is no action input
-                action_type = action.split("\n")[0]
-                action_input = self.get_reasoning(
-                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:{action_type}\nTexto da Ação {i}:",
-                    stop=[f"Observação {i}:", "Mensagem:"],
-                )
-
-            thought, action_type, action_input = (
-                thought.strip(),
-                action_type.strip(),
-                action_input.strip(),
-            )
-
-            # Prints the reasoning
-            if self.verbose:
-                print(f"Thought {i}: {thought}")
-                print(f"Action {i}: {action_type}")
-                print(f"Input of Action {i}: {action_input}")
-            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\n"
-
-            if action_type.startswith("Finalizar"):
-                done = True
-                answer = action_input
-                break
-            else:
-
-                # In case the next observation fails to retrieve useful information,
-                # we will induce the model to try again if there is still room for searches
-                # The -1 accounts for the last Finish step after the searches
-                searches_left = settings.max_num_reasoning - i - 1
-
-                # If the action is not to finish, gets an observation
-                observation, tool = self.get_observation(
-                    action_input, index, used_faq, latency_dict, api_key, searches_left
-                )
-
-                if self.verbose:
-                    print(f"Observation {i} (FROM {tool}): {observation}")
-
-                debug_string += f"Observação {i} ({tool}): {observation}\n"
-
-            # Adds the thought, action and observation to the iteration string
-            iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\nObservação {i}: {observation}\n"
-
-            # Checks if the number of tokens is under the limit
-            total_tokens = self.get_num_tokens(prompt + iteration_string)
-            if total_tokens > settings.max_tokens_prompt:
-                break
-
-            # Adds the iteration string to the prompt
-            prompt += iteration_string
-
-        # If the reasoning is not done, forces the finish
-        if not done:
-            answer = self.get_reasoning(self.forced_finish.format(prompt=prompt))
-            if self.verbose:
-                print(f"Finalizar Forçado: {answer}")
-            debug_string += f"Finalizar Forçado: {answer}\n"
+        answer = self.find_answer(
+            user_message,
+            chat_history,
+            index,
+            used_faq,
+            latency_dict,
+            api_key,
+            debug_string,
+        )
 
         # Moderates the answer
         if self.is_the_message_harmful(answer):
@@ -373,67 +291,111 @@ class ChatHandler:
         # If the debug is requested, returns the answer and the debug string
         return f"{debug_string}\nAnswer: {answer}"
 
-    @staticmethod
-    def get_num_tokens(text: str) -> int:
-        """
-        Returns the number of tokens in the text.
-        """
-        encoding = tiktoken.encoding_for_model(settings.encoding_model)
-        return len(encoding.encode(text))
+    def find_answer(
+        self,
+        user_message,
+        chat_history,
+        index_domain,
+        used_faq,
+        latency_dict,
+        api_key,
+        debug_string,
+    ):
+        full_chat_prompt = self.chat_prompt.format(domain=index_domain)
+        prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
-    def get_reasoning(self, prompt: str, stop: List[str] = None) -> str:
-        """
-        Sends a request to prompt_answerer to get a reasoning.
-
-        Args:
-            - prompt: the prompt to be sent to prompt_answerer.
-            - stop: the stop tokens list.
-
-        Returns:
-            - the reasoning for the message (str).
-        """
-        if stop is None:
-            stop = ["\n"]
-        # Returns the reasoning for the message
-        body = {
-            "service": "ChatBot",
-            "prompt": [{"role": "user", "content": prompt}],
-            "model": self._model,
-            "configurations": {
-                "temperature": 0,
-                "max_tokens": 512,
-                "top_p": 1,
-                "frequency_penalty": 0,
-                "presence_penalty": 0,
-                "stop": stop,
-            },
-        }
-        try:
-            response = retry_request_with_timeout(
-                RequestMethod.POST,
-                settings.completion_endpoint,
-                body=body,
-                request_timeout=settings.reasoning_timeout,
+        # Starts the reasoning loop
+        done = False
+        for i in range(1, settings.max_num_reasoning + 1):
+            # Adds the reasoning to the prompt
+            reasoning_prompt = f"{prompt}Pensamento {i}:"
+            reasoning = model_utils.get_reasoning(
+                prompt=reasoning_prompt,
+                model=self._model,
+                stop=[f"Observação {i}:", "Mensagem:"],
             )
-            if not response.ok:
-                error_logger.error(
-                    json.dumps(
-                        {
-                            "prompt": prompt,
-                            "stop": stop,
-                            "status_code": response.status_code,
-                            "service": "prompt_answerer",
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        },
-                        ensure_ascii=False,
-                    )
+            try:
+                thought, action = reasoning.split(f"\nAção {i}:")
+            except Exception:
+                # Occurs if there is no action
+                thought = reasoning.split("\n")[0]
+                action = model_utils.get_reasoning(
+                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
+                    model=self._model,
+                    stop=[f"Observação {i}:", "Mensagem:"],
                 )
-                raise Exception("Error in reasoning")
-            return response.json()["text"].strip()
-        except requests.exceptions.Timeout as te:
-            raise te
-        except Exception as e:
-            raise e
+
+            try:
+                action_type, action_input = action.split(f"\nTexto da ação {i}:")
+            except Exception:
+                # Occurs if there is no action input
+                action_type = action.split("\n")[0]
+                action_input = model_utils.get_reasoning(
+                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:{action_type}\nTexto da Ação {i}:",
+                    model=self._model,
+                    stop=[f"Observação {i}:", "Mensagem:"],
+                )
+
+            thought, action_type, action_input = (
+                thought.strip(),
+                action_type.strip(),
+                action_input.strip(),
+            )
+
+            # Prints the reasoning
+            if self.verbose:
+                print(f"Thought {i}: {thought}")
+                print(f"Action {i}: {action_type}")
+                print(f"Input of Action {i}: {action_input}")
+            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\n"
+
+            if action_type.startswith("Finalizar"):
+                done = True
+                answer = action_input
+                break
+            else:
+
+                # In case the next observation fails to retrieve useful information,
+                # we will induce the model to try again if there is still room for searches
+                # The -1 accounts for the last Finish step after the searches
+                searches_left = settings.max_num_reasoning - i - 1
+
+                # If the action is not to finish, gets an observation
+                observation, tool = self.get_observation(
+                    action_input,
+                    index_domain,
+                    used_faq,
+                    latency_dict,
+                    api_key,
+                    searches_left,
+                )
+
+                if self.verbose:
+                    print(f"Observation {i} (FROM {tool}): {observation}")
+
+                debug_string += f"Observação {i} ({tool}): {observation}\n"
+
+            # Adds the thought, action and observation to the iteration string
+            iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\nObservação {i}: {observation}\n"
+
+            # Checks if the number of tokens is under the limit
+            total_tokens = model_utils.get_num_tokens(prompt + iteration_string)
+            if total_tokens > settings.max_tokens_prompt:
+                break
+
+            # Adds the iteration string to the prompt
+            prompt += iteration_string
+
+        # If the reasoning is not done, forces the finish
+        if not done:
+            answer = model_utils.get_reasoning(
+                self.forced_finish.format(prompt=prompt), self._model
+            )
+            if self.verbose:
+                print(f"Finalizar Forçado: {answer}")
+            debug_string += f"Finalizar Forçado: {answer}\n"
+
+        return answer
 
     def get_observation(
         self,
@@ -460,10 +422,9 @@ class ChatHandler:
             List: A list with the top 5 documents from NSX, where the first document is used as the answer to the query.
         """
 
-        # Tries to find a similar query in the FAQ
         if not self.disable_faq:
             time_faq_answer = time.time()
-            observation = self.get_faq_answer(query, index, used_faq, latency_dict)
+            observation = self.faq_search.search(query, index, used_faq, latency_dict)
             latency_dict["faq_answer"] = time.time() - time_faq_answer
             tool = SearchTool.FAQ
         else:
@@ -472,7 +433,7 @@ class ChatHandler:
         if observation == "irrespondível":
             if self.use_nsx_sense:
                 time_nsx_sense_answer = time.time()
-                observation = self.get_nsx_sense_answer(
+                observation = self.nsx_sense_search.search(
                     query, index, api_key, searches_left
                 )
                 latency_dict["nsx_sense_answer"] = time.time() - time_nsx_sense_answer
@@ -480,260 +441,13 @@ class ChatHandler:
             else:
                 # Get the first document from NSX
                 time_nsx_answer = time.time()
-                observation = self.get_nsx_answer(query, index, api_key, searches_left)
+                observation = self.nsx_search.search(
+                    query, index, api_key, searches_left
+                )
                 latency_dict["nsx_answer"] = time.time() - time_nsx_answer
                 tool = SearchTool.NSX
 
         return observation, tool
-
-    def get_nsx_answer(
-        self,
-        query: str,
-        index: str,
-        api_key: str,
-        searches_left: int,
-        num_docs: int = 1,
-    ) -> str:
-        """
-        Gets the first document from NSX.
-
-        Args:
-            - query: the query to be sent to NSX.
-            - index: the index to be used for the search.
-            - api_key: the user's API key to be used for the NSX API.
-            - searches_left: number of searches the model can still do for the current message.
-            - num_docs: number of documents to be returned by NSX.
-
-        Returns:
-            str: The answer to the query (with concatenated num_docs from NSX) or
-            str: A string telling the chatbot that the answer was not found on NSX.
-        """
-        # Parameters for the request
-        params = {
-            "index": index,
-            "query": query,
-            "max_docs_to_return": settings.max_docs_to_return,
-            "format_response": False,
-        }
-        # Headers for the request
-        headers = {
-            "Authorization": f"APIKey {api_key}",
-        }
-        try:
-            response = retry_request_with_timeout(
-                RequestMethod.GET,
-                settings.nsx_endpoint,
-                params=params,
-                headers=headers,
-                request_timeout=settings.nsx_timeout,
-            )
-        except requests.exceptions.Timeout as te:
-            raise te
-        if response.ok:
-            response = response.json()
-            response_len = len(response["response_reranker"])
-            if response_len > 0:
-                docs = ""
-                for i in range(min(num_docs, response_len)):
-                    docs += f"{response['response_reranker'][i]['paragraphs'][0]}\n"
-                return docs.strip()
-            elif searches_left == 0:
-                return self.unanswerable_search
-            else:
-                return self.answer_not_found
-        raise Exception(f"Error in NSX: {response.json()['message']}")
-
-    def get_nsx_sense_answer(
-        self, query: str, index: str, api_key: str, searches_left: int
-    ) -> str:
-        """
-        Gets a response using NSX sense.
-
-        Args:
-            - query: the query to be sent to NSX.
-            - index: the index to be used for the search.
-            - api_key: the user's API key to be used for the NSX API.
-            - searches_left: number of searches the model can still do for the current message.
-
-        Returns:
-            - A response built with NSX Sense.
-        """
-        # Parameters for the request
-        params = {
-            "index": index,
-            "query": query,
-            "max_docs_to_return": settings.max_docs_to_return,
-            "format_response": False,
-        }
-        # Headers for the request
-        headers = {
-            "Authorization": f"APIKey {api_key}",
-        }
-        try:
-            response = retry_request_with_timeout(
-                RequestMethod.GET,
-                settings.nsx_endpoint,
-                params=params,
-                headers=headers,
-                request_timeout=settings.nsx_sense_timeout,
-            )
-        except requests.exceptions.Timeout as te:
-            raise te
-        if not response.ok:
-            raise Exception(f"Error in NSX: {response.json()['message']}")
-
-        response = response.json()
-
-        documents = [
-            {"paragraphs": response_reranker["paragraphs"][0]}
-            for response_reranker in response["response_reranker"]
-        ]
-
-        if len(documents) == 0:
-            if searches_left == 0:
-                return self.unanswerable_search
-            else:
-                return self.answer_not_found
-
-        answer = self.answer_from_docs(query, index, documents, searches_left)
-
-        return answer
-
-    def answer_from_docs(
-        self, query: str, index: str, documents: list, searches_left: int
-    ):
-        """
-        Builds an answer for the query based on the documents, using MultidocQA.
-
-        Args:
-            - query: the query that is going to be answered
-            - index: NSX index from which the documents were retrieved
-            - documents: list of NSX response_reranker dicts
-            - searches_left: number of searches the model can still do for the current message.
-
-        Returns:
-            - An answer for the query based on the documents
-        """
-
-        params = {
-            "query": query,
-            "documents": documents,
-            "language": settings.chatbot_language,
-            "index": index,
-        }
-
-        response = requests.post(settings.nsx_sense_endpoint, json=params)
-
-        if not response.ok:
-            raise Exception(f"Error in MultidocQA: {response.json()['msg']}")
-
-        response = response.json()["pred_answer"]
-
-        if "irrespondível" in response.lower():
-            if searches_left == 0:
-                return self.unanswerable_search
-            else:
-                return self.answer_not_found
-        else:
-            return response
-
-    def get_faq_answer(
-        self, query: str, index: str, used_faq: list, latency_dict: Dict[str, float]
-    ) -> str:
-        """
-        Search for an answer in the FAQ.
-
-        Args:
-            - query: the query to be used in the search.
-            - index: the FAQ to be used for the search.
-            - used_faq: list containing queries from the faq that have already been used
-            - latency_dict: dictionary containing the latency for each step.
-
-        Returns:
-            - the answer for the query.
-        """
-        # Gets the top questions from the FAQ that are similar to the query
-        time_nsx_score = time.time()
-        try:
-            top_questions = self.get_top_faq_questions(query, self.faq[index])
-        except Exception:
-            return "irrespondível"
-        latency_dict["nsx_score"] = time.time() - time_nsx_score
-
-        queries = ""
-        prompt_size = self.get_num_tokens(self.faq_prompt + query)
-
-        for question in top_questions:
-            question_size = self.get_num_tokens(question)
-            if (
-                question not in used_faq
-                and (prompt_size + question_size) < settings.max_tokens_faq_prompt
-            ):
-                queries += question + "\n"
-                prompt_size += question_size
-
-        prompt = self.faq_prompt.format(
-            queries=queries,
-            search_input=query,
-        )
-
-        # Gets the reasoning for the prompt
-        time_faq_selection = time.time()
-        response = self.get_reasoning(prompt, stop=["\n"])
-        latency_dict["faq_selection"] = time.time() - time_faq_selection
-
-        # Returns the exact answer if the question is in the FAQ
-        if response in self.faq[index]:
-            used_faq.append(response)
-            return self.faq[index][response]
-
-        # If the response does not match any question
-        # tries to check if the responses has an unexpected format
-        # Returns the answer of the first to_question that appears in the response
-        for question in top_questions:
-            if question in response:
-                used_faq.append(question)
-                return self.faq[index][question]
-
-        return "irrespondível"
-
-    def get_top_faq_questions(self, query: str, faq: Dict[str, str]) -> List[str]:
-        """Get the top questions from the FAQ that are similar to the query using nsx inference route.
-        Args:
-            - query: the query to be used in the search.
-            - faq: the FAQ to be used for the search.
-        Returns:
-            - the top questions from the FAQ that are similar to the query.
-        """
-        payload = {
-            "query": query,
-            "documents": [question for question in faq],
-            "language": self.language,
-        }
-        try:
-            response = requests.post(settings.nsx_score_endpoint, json=payload)
-            response.raise_for_status()
-            scores = [result["score"] for result in response.json()["results"]]
-            top_questions = [
-                question
-                for _, question in sorted(zip(scores, faq), reverse=True)[
-                    : settings.max_faq_questions
-                ]
-            ]
-            return top_questions
-        except requests.HTTPError as e:
-            error_logger.error(
-                json.dumps(
-                    {
-                        "error_msg": str(e),
-                        "traceback": traceback.format_exc(),
-                        "status_code": response.status_code,
-                        "service": "nsx_score",
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                )
-            )
-            raise Exception("error when trying to rank faq questions")
 
     def get_chat_history(self, user_id: str, chatbot_id: str, index: str) -> str:
         """
@@ -752,7 +466,7 @@ class ChatHandler:
 
         # If the chat history is too long, makes a summary
         # TODO: Experiments to check if making a summary is a good idea
-        if self.get_num_tokens(chat_history) > settings.max_tokens_chat_history:
+        if model_utils.get_num_tokens(chat_history) > settings.max_tokens_chat_history:
             summary = self.make_summary(chat_history)
             self._memory.clear_history(user_id, chatbot_id, index)
             self._memory.save_history(
@@ -777,7 +491,7 @@ class ChatHandler:
         prompt = self.summary_prompt.format(chat_history=chat_history)
 
         # Gets the reasoning for the prompt
-        summary = self.get_reasoning(prompt)
+        summary = model_utils.get_reasoning(prompt, model=self._model)
 
         if self.verbose:
             print(f"Summary: {summary}")
@@ -801,6 +515,9 @@ class ChatHandler:
             if response["results"][0]["flagged"]:
                 return True
             return False
+        else:
+            # TODO: improve logging error
+            print("Error calling moderataion endpoint", response.content)
         # TODO: Log if the message comes from the user or the assistant
         error_logger.error(response.text)
         raise Exception("Error in moderation")
