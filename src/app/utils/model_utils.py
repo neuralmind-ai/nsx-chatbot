@@ -5,6 +5,7 @@ from typing import List
 import requests
 import tiktoken
 
+from app.services.azure_table_storage import AzureTableLoggerHandler
 from app.services.build_timed_logger import build_timed_logger
 from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
 from settings import settings
@@ -13,6 +14,18 @@ chat_logger = build_timed_logger("chat_logger", "chat.log")
 error_logger = build_timed_logger("error_logger", "error.log")
 harmful_logger = build_timed_logger("harmful_logger", "harmful.log")
 latency_logger = build_timed_logger("latency_logger", "latency.log")
+
+chatlog_table = AzureTableLoggerHandler("chatbotlogs")
+chat_logger.addHandler(chatlog_table)
+
+error_table = AzureTableLoggerHandler("chatboterrors")
+error_logger.addHandler(error_table)
+
+harmful_table = AzureTableLoggerHandler("chatbotharmful")
+harmful_logger.addHandler(harmful_table)
+
+latency_table = AzureTableLoggerHandler("chatbotlatency")
+latency_logger.addHandler(latency_table)
 
 
 def get_num_tokens(text: str) -> int:

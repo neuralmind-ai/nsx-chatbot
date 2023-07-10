@@ -8,6 +8,9 @@ load_dotenv()
 class Settings(BaseSettings):
     """Whatsapp Bot settings"""
 
+    # Which environment this is running in ("prod", "staging", etc)
+    environment: str
+
     token: str = ""
     base_url: HttpUrl = "https://nsx.ai"
     text_url: HttpUrl = "https://waba.360dialog.io/v1/messages"
@@ -60,6 +63,10 @@ class Settings(BaseSettings):
 
     # Azure key vault
     azure_vault_url: str = "https://nm-chatbot-keys.vault.azure.net/"
+
+    # Azure Account
+    account_name = "stchatbotnm"
+    azure_chatbot_access_key: str = None
 
     # AzureCosmos
     cosmos_endpoint: str = "https://chatbot-nosql.documents.azure.com:443/"
