@@ -15,3 +15,5 @@ src/validation/config/memory.json
 src/validation/logs/*
 
 src/playground_prompts/*
+# vscode
+.vscode/*

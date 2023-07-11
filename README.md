@@ -6,6 +6,68 @@ The Fast API instance created in `whatsappbot/src/app/main.py` provides a webhoo
 
 All settings - such those related to Neural Search API requests or the time interval for a user to be considered inactive - can be found in `whatsappbot/src/settings.py`.
 
+## Installing the project and manage its dependencies
+
+This project uses [poetry](https://python-poetry.org/) as dependency manager, so to install its dependencies we recommend that you install poetry and use it to managing the NSX-Chatbot dependencies.
+
+There are many ways to install poetry on your system, you can use your system's package manager, install using pip, conda or other python package managers.
+
+For example, to install poetry you can use one of the follow commands.
+
+```bash
+# Installing with pip
+pip install poetry
+
+# Installing with conda
+conda install poetry
+
+# With the official installer (Linux, macOS, Windows (WSL))
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Windowns (Powershell)
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
+
+```
+
+For more details about poetry installation, you can read its [documentation](https://python-poetry.org/docs/#installing-with-the-official-installer).
+
+
+With poetry installed in your environment, you can use the following commands to install the project dependencies.
+
+```bash
+# Install project dependencies (main and dev dependencies)
+poetry install
+# Enter in the project virtual environment
+poetry shell
+```
+
+If you want only install the project dependencies, you can use the `requirements*.txt` files. The `requirements.txt`, in the project root folder, has all runtime (main) dependencies needed to run the NSX-Chatbot. You can install it using pip, we recommend that you install the dependencies in a virtual environment to avoid conflits with depedencies versions in your system. On linux you can use the following commands.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+As a developer, we endorce that you also install the *dev dependencies* of this project. They include, the code formatter, the linter and test tools, used in this project. If you are using poetry, it will install the *dev dependencies* automatically with the command `poetry install`. To install the *dev dependencies* with pip, you can use the `requirements-dev.txt` file.
+
+If you want use the **Evaluation Pipeline**, you need install the evaluation dependencies. You can install these dependencies with one of the following commands.
+
+```bash
+# With poetry
+poetry install --with eval
+
+# With pip
+pip install -r requirements-eval.txt
+```
+
+## Development Guidelines
+
+To improve collaborative work on this project, we strongly recommend that you use the code formatting and linting tools.
+
+In the NSX-Chatbot, we use the [pre-commit](https://pre-commit.com/) tool to apply code formatting and linting before each git commit. if you installed the developer dependencies the pre-commit is already available in your environment. To install the pre-commit hooks on git, you can use the `pre-commit install` command. If you have modifications in the git staging, you can manually run pre-commit with the `pre-commit run` command, with this command, pre-commit will run [black](https://black.readthedocs.io/en/stable/), [isort](https://pycqa.github.io/isort/), [flake8](https://flake8.pycqa.org/en/latest/) and other tools in the staging modifications.
+
+
 ## Evaluation Pipeline
 
 For automatic evaluation of NSX-ChatBot responses, the project contains a configurable evaluation pipeline script that evaluates a set of QA Dataset with chatbot responses to obtain NSX-ChatBot accuracy on each dataset.

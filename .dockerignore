@@ -1,11 +1,14 @@
+.venv/
+venv/
 __pycache__/
 
-.env
+src/validation/
+src/.cache/
 
-api/uploads
-
-api/dags
-
-environment.yml
-
+.gitignore
+.pre-commit-config.yaml
+.flake8
 docker-compose.yml
+bitbucket-pipelines.yml
+requirements.txt
+redis.conf

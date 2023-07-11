@@ -1,12 +1,12 @@
 version: "3.1"
 
 services:
-  waba-api:
-    image: whatsappbot:latest
+  nsxchatbot:
+    image: nsxchatbot.azurecr.io/nsxchatbot:latest
     restart: always
     env_file: "./src/.env"
     volumes:
-      - ./src/app/logs:/whatsappbot/logs
+      - ./src/app/logs:/nsx-chatbot/src/logs
     network_mode: "host"
 
   redis:

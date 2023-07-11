@@ -1,24 +1,41 @@
-image: python:3.10
+image: python:3.10.12
 
 definitions:
   steps:
     - step: &evaluate
         name: Evaluate
+        deployment: Test
         caches:
           - pip
         script:
           - ssh-keyscan -H $DEV_IP >> ~/.ssh/known_hosts
           - ssh -NL 7000:localhost:7000 -f ubuntu@$DEV_IP
+          - pip install -r requirements-eval.txt
           - cd src
-          - pip install -r validation/eval_requirements.txt
           - python validation/pipeline.py
         artifacts:
           - src/validation/logs/**
+
+    - step: &push-image-to-azure
+        name: release-new-chatbot-version
+        script:
+          - pip install poetry
+          - ./scripts/release_version.sh
+        services:
+          - docker
+
 
 pipelines:
   branches:
     master:
       - step: *evaluate
+      - step: *push-image-to-azure
+        deployment: Production
+    staging:
+      - step: *evaluate
+      - step: *push-image-to-azure
+        deployment: Staging
+
 
   custom:
     evaluation-pipeline:
@@ -51,3 +68,12 @@ pipelines:
           - name: MAX_VARIANT_QUESTIONS
             default: 1
       - step: *evaluate
+
+    push-custom-image-to-azure:
+      - step:
+          name: push-custom-image-to-azure
+          deployment: Test
+          script:
+            - ./scripts/push_custom_docker_image.sh $BITBUCKET_BRANCH
+          services:
+            - docker

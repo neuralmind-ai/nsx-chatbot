@@ -1,9 +1,27 @@
+from pathlib import Path
+
 from dotenv import load_dotenv
 from pydantic import BaseSettings, HttpUrl
 
 # Load environment variables from .env file
 load_dotenv()
 
+def get_version():
+    """Get version from pyproject.toml
+
+    NOTE:
+        It's expected that the file is in the root of the project
+        and this function is called from the src folder
+    """
+    # whatsappbot dir
+    root_path = Path(__file__).parent.parent
+    pyproject_path = root_path / "pyproject.toml"
+    with pyproject_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if "version" in line:
+                return line.split("=")[1].replace('"', "").strip()
+    # If version is not found, return unknown
+    return "unknown"
 
 class Settings(BaseSettings):
     """Whatsapp Bot settings"""
@@ -81,8 +99,12 @@ class Settings(BaseSettings):
     nsx_sense_timeout: int = 30
     reasoning_timeout: int = 30
 
+    # NSX-Chatbot version
+    # This variable is read in the class initialization
+    version: str
+
     class Config:
         env_file = ".env"
 
 
-settings = Settings()
+settings = Settings(version=get_version())
