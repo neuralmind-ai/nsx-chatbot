@@ -142,9 +142,6 @@ class ChatHandler:
         if user_message.startswith("#") and self.dev_mode:
             return self.dev_mode_action(user_message)
 
-        # Stores all reasoning steps for debugging
-        debug_string = ""
-
         time_begin = time.time()
         # Stores the latency for each step
         latency_dict = {}
@@ -183,14 +180,13 @@ class ChatHandler:
             return "Sua mensagem é muito longa para que eu consiga processá-la adequadamente. Por favor, escreva-a de modo mais conciso."
 
         time_pre_reasoning = time.time()
-        answer = self.find_answer(
+        answer, debug_string = self.find_answer(
             user_message,
             chat_history,
             index,
             used_faq,
             latency_dict,
             api_key,
-            debug_string,
         )
 
         # Moderates the answer
@@ -299,10 +295,12 @@ class ChatHandler:
         used_faq,
         latency_dict,
         api_key,
-        debug_string,
-    ):
+    ) -> Tuple[str, str]:
         full_chat_prompt = self.chat_prompt.format(domain=index_domain)
         prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
+
+        # Stores all reasoning steps for debugging
+        debug_string = ""
 
         # Starts the reasoning loop
         done = False
@@ -395,7 +393,7 @@ class ChatHandler:
                 print(f"Finalizar Forçado: {answer}")
             debug_string += f"Finalizar Forçado: {answer}\n"
 
-        return answer
+        return answer, debug_string
 
     def get_observation(
         self,

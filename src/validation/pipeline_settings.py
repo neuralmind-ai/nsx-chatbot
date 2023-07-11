@@ -16,9 +16,14 @@ class PipelineSettings(BaseSettings):
     validation_data_dir = "validation/data"  # Path to store the data
     validation_log_dir = "validation/logs"  # Path to store the logs
 
-    pipeline_name: str
+    # TODO: Use the correct chatbot version here
+    chatbot_version: str = "v0.1.0"
+    pipeline_name: str = "evaluation_pipeline"
     max_dataset_questions: int = -1  # -1 for all questions
     max_variant_questions: int = -1  # -1 for all questions
+
+    # Concurrency settings
+    max_concurrent_questions: int = 4
 
     # Chatbot Settings
     chatbot_model: str = "gpt-3.5-turbo-azure"

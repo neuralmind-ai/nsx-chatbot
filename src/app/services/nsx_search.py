@@ -195,10 +195,12 @@ class NSXSenseSearchTool:
 
         if not response.ok:
             r = response.json()
-            if r.get("msg") is not None:
-                raise Exception(f"Error in MultidocQA: {response.json().get('msg')}")
+            if r.get("detail") is not None:
+                raise Exception(f"Error in MultidocQA: {r.get('detail')}")
             else:
-                raise Exception(f"Error in MultidocQA: {response.json()}")
+                raise Exception(
+                    f"Error in MultidocQA: {r}, status: {response.status_code}"
+                )
 
         response = response.json()["pred_answer"]
 

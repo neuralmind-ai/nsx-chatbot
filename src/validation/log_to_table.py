@@ -18,16 +18,42 @@ from pathlib import Path
 
 import pandas as pd
 
-logs = Path("logs/")
 
-for directory in logs.iterdir():
-    print(directory.name)
-    for log_path in directory.iterdir():
-        if log_path.suffix == ".json":
-            print(log_path.name)
-            with log_path.open("r", encoding="utf-8") as f:
-                log = json.load(f)
-            dataframe = pd.DataFrame(log["log"])
-            dataframe.to_csv(
-                directory / f"{log_path.stem}.csv", index=False, encoding="utf-8"
-            )
+def parse_evaluation(log: dict):
+    for log_entry in log["log"]:
+        if log_entry["evaluation"] == "true":
+            log_entry["evaluation"] = "correto"
+        elif log_entry["evaluation"] == "false":
+            log_entry["evaluation"] = "incorreto"
+        elif log_entry["evaluation"] == "not evaluated":
+            log_entry["evaluation"] = "não avaliado"
+
+
+def to_table(log_path: Path):
+    """Convert log file to csv table."""
+    with log_path.open("r", encoding="utf-8") as f:
+        log = json.load(f)
+    parse_evaluation(log)
+    dataframe = pd.DataFrame(log["log"])
+    dataframe.to_csv(
+        log_path.parent / f"{log_path.stem}.csv", index=False, encoding="utf-8"
+    )
+
+
+if __name__ == "__main__":
+    logs = Path("logs/")
+
+    for directory in logs.iterdir():
+        print(directory.name)
+        for log_path in directory.iterdir():
+            if log_path.suffix == ".json":
+                print(log_path.name)
+                with log_path.open("r", encoding="utf-8") as f:
+                    log = json.load(f)
+
+                parse_evaluation(log)
+
+                dataframe = pd.DataFrame(log["log"])
+                dataframe.to_csv(
+                    directory / f"{log_path.stem}.csv", index=False, encoding="utf-8"
+                )

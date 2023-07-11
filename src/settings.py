@@ -77,9 +77,9 @@ class Settings(BaseSettings):
 
     # Timeouts and retries
     max_retries: int = 3
-    nsx_timeout: int = 5
-    nsx_sense_timeout: int = 10
-    reasoning_timeout: int = 15
+    nsx_timeout: int = 30
+    nsx_sense_timeout: int = 30
+    reasoning_timeout: int = 30
 
     class Config:
         env_file = ".env"
