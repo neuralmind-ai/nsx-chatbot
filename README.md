@@ -128,3 +128,10 @@ You can feed the script parameters, like:
 > python debug_chat --help
 > python debug_chat.py --user fulano --index FUNDEP_Ciencias  --disable-faq --disable-mem --use-nsx --verbose --dev
 ```
+
+You can also pass in the first question as a parameter:
+
+```
+> python debug_chat.py --user fulano --index FUNDEP_Ciencias  --disable-faq --disable-mem --use-nsx --verbose --dev \
+    "Qual a data da prova?"
+```
