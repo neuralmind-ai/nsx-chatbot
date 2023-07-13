@@ -108,17 +108,17 @@ def post_360_dialog_intro_message(
 
 
 def post_360_dialog_error_message(
-    destinatary: str, index: str, d360_number: str, db: DBManager
+    destinatary: str,
+    d360_number: str,
+    error_code: str,
 ):
     """
     Sends a message to the user saying that an error occurred while processing the message.
     If there is a default error message configured in CosmosDB, it is used. Otherwise, a default message is sent.
     Args:
         destinatary (str): The destinatary's phone number.
-        index (str): The index name.
         d360_number (str): The chatbot's number.
+        error_code (str): The internal error code, used to identify the source of the problem.
     """
-    error_message = db.get_index_information(index, "default_message")
-    if error_message is None:
-        error_message = "Erro no processamento da mensagem. Tente novamente."
+    error_message = f"Desculpe, ocorreu um erro no processamento da sua mensagem. Por favor, tente novamente mais tarde.\nErro {error_code}."
     post_360_dialog_text_message(destinatary, error_message, d360_number)

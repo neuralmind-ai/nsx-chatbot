@@ -4,7 +4,18 @@ from pathlib import Path
 
 import redis
 
+from app.utils.exceptions import MemoryHandlerError
 from settings import settings
+
+
+def handle_memory_errors(func):
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            raise MemoryHandlerError(e)
+
+    return wrapper
 
 
 class MemoryHandler(ABC):
@@ -89,6 +100,7 @@ class JSONMemoryHandler(MemoryHandler):
         self._memory.touch(exist_ok=True)
         self._save(memory={})
 
+    @handle_memory_errors
     def _open(self) -> dict:
         with self._memory.open("r", encoding="utf-8") as f:
             try:
@@ -97,10 +109,12 @@ class JSONMemoryHandler(MemoryHandler):
                 memory = {}
         return memory
 
+    @handle_memory_errors
     def _save(self, memory) -> None:
         with self._memory.open("w", encoding="utf-8") as f:
             json.dump(memory, f, ensure_ascii=False, indent=4)
 
+    @handle_memory_errors
     def save_history(
         self, user: str, chatbot_id: str, index: str, message: str
     ) -> None:
@@ -121,6 +135,7 @@ class JSONMemoryHandler(MemoryHandler):
 
         self._save(memory=memory)
 
+    @handle_memory_errors
     def retrieve_history(self, user: str, chatbot_id: str, index: str) -> str:
         user_id = user + "_" + chatbot_id
         return self._open().get(user_id, {}).get(index, None)
@@ -134,6 +149,7 @@ class JSONMemoryHandler(MemoryHandler):
         except Exception:
             pass
 
+    @handle_memory_errors
     def set_latest_user_index(self, user: str, chatbot_id: str, index: str) -> None:
         user_id = user + "_" + chatbot_id
         memory = self._open()
@@ -143,6 +159,7 @@ class JSONMemoryHandler(MemoryHandler):
             memory[user_id] = {"latest_index": index}
         self._save(memory=memory)
 
+    @handle_memory_errors
     def get_latest_user_index(self, user: str, chatbot_id: str) -> str:
         user_id = user + "_" + chatbot_id
         memory = self._open()
@@ -157,6 +174,7 @@ class RedisMemoryHandler(MemoryHandler):
     def __init__(self, host: str, port: int):
         self.client = redis.Redis(host=host, port=port)
 
+    @handle_memory_errors
     def save_history(
         self, user: str, chatbot_id: str, index: str, message: str
     ) -> None:
@@ -179,6 +197,7 @@ class RedisMemoryHandler(MemoryHandler):
             self.client.hset(user_id, index, updated_history)
         self.client.expire(user_id, settings.expiration_time_in_seconds)
 
+    @handle_memory_errors
     def retrieve_history(self, user: str, chatbot_id: str, index: str) -> str:
         """
         This method is used to retrieve the chat history of a user in a given index.
@@ -194,6 +213,7 @@ class RedisMemoryHandler(MemoryHandler):
             return None
         return self.client.hget(user_id, index).decode("utf-8")
 
+    @handle_memory_errors
     def clear_history(self, user: str, chatbot_id: str, index: str) -> None:
         """
         This method is used to clear the chat history of a user in a given index.
@@ -205,6 +225,7 @@ class RedisMemoryHandler(MemoryHandler):
         user_id = user + "_" + chatbot_id
         self.client.hdel(user_id, index)
 
+    @handle_memory_errors
     def set_latest_user_index(self, user: str, chatbot_id: str, index: str) -> None:
         """
         This method is used to set the last index used by the user.
@@ -216,6 +237,7 @@ class RedisMemoryHandler(MemoryHandler):
         user_id = user + "_" + chatbot_id
         self.client.hset(user_id, "latest_index", index)
 
+    @handle_memory_errors
     def get_latest_user_index(self, user: str, chatbot_id: str) -> str:
         """
         This method is used to get the last index used by the user.

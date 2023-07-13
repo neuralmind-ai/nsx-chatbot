@@ -1,6 +1,11 @@
 import requests
 
 from app.prompts import base_prompt
+from app.utils.exceptions import (
+    NSXAuthenticationError,
+    NSXSearchError,
+    SenseSearchError,
+)
 from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
 from settings import settings
 
@@ -90,6 +95,8 @@ class NSXSearchTool:
             )
         except requests.exceptions.Timeout as te:
             raise te
+        except Exception as e:
+            raise e
         if response.ok:
             response = response.json()
             response_len = len(response["response_reranker"])
@@ -102,7 +109,9 @@ class NSXSearchTool:
                 return self.unanswerable_search
             else:
                 return self.answer_not_found
-        raise Exception(f"Error in NSX: {response.json()['message']}")
+        if response.status_code == 403:
+            raise NSXAuthenticationError("Invalid API key.")
+        raise NSXSearchError(f"Error in NSX: {response.json()['message']}.")
 
 
 class NSXSenseSearchTool:
@@ -149,7 +158,9 @@ class NSXSenseSearchTool:
         except requests.exceptions.Timeout as te:
             raise te
         if not response.ok:
-            raise Exception(f"Error in NSX: {response.json()['message']}")
+            if response.status_code == 403:
+                raise NSXAuthenticationError("Invalid API key.")
+            raise NSXSearchError(f"Error in NSX: {response.json()['message']}.")
 
         response = response.json()
 
@@ -196,9 +207,11 @@ class NSXSenseSearchTool:
         if not response.ok:
             r = response.json()
             if r.get("detail") is not None:
-                raise Exception(f"Error in MultidocQA: {r.get('detail')}")
+                raise SenseSearchError(
+                    f"Error in MultidocQA: {r.get('detail')}"
+                )
             else:
-                raise Exception(
+                raise SenseSearchError(
                     f"Error in MultidocQA: {r}, status: {response.status_code}"
                 )
 

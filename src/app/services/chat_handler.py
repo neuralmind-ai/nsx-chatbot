@@ -14,6 +14,7 @@ from app.services.faq_search import FAQSearchTool
 from app.services.memory_handler import MemoryHandler
 from app.services.nsx_search import NSXSearchTool, NSXSenseSearchTool
 from app.utils import model_utils
+from app.utils.exceptions import PromptAnswererError
 from app.utils.model_utils import (
     chat_logger,
     error_logger,
@@ -507,15 +508,18 @@ class ChatHandler:
             - True if the message is harmful, False otherwise.
         """
         body = {"service": "ChatBot", "input": [user_message]}
-        response = requests.post(settings.moderation_endpoint, json=body)
-        if response.ok:
-            response = response.json()
-            if response["results"][0]["flagged"]:
-                return True
-            return False
-        else:
-            # TODO: improve logging error
-            print("Error calling moderataion endpoint", response.content)
-        # TODO: Log if the message comes from the user or the assistant
-        error_logger.error(response.text)
-        raise Exception("Error in moderation")
+        try:
+            response = requests.post(settings.moderation_endpoint, json=body)
+            if response.ok:
+                response = response.json()
+                if response["results"][0]["flagged"]:
+                    return True
+                return False
+            else:
+                # TODO: improve logging error
+                print("Error calling moderataion endpoint", response.content)
+            # TODO: Log if the message comes from the user or the assistant
+        except requests.exceptions.ConnectionError as ce:
+            raise PromptAnswererError(f"Prompt answerer is down. Error: {str(ce)}")
+        except Exception:
+            pass

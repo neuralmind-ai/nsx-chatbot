@@ -7,6 +7,7 @@ import tiktoken
 
 from app.services.azure_table_storage import AzureTableLoggerHandler
 from app.services.build_timed_logger import build_timed_logger
+from app.utils.exceptions import PromptAnswererError
 from app.utils.timeout_management import RequestMethod, retry_request_with_timeout
 from settings import settings
 
@@ -84,9 +85,13 @@ def get_reasoning(prompt: str, model, stop: List[str] = None) -> str:
                     ensure_ascii=False,
                 )
             )
-            raise Exception("Error in reasoning")
+            raise PromptAnswererError("Error in reasoning. Prompt Answerer is down.")
         return response.json()["text"].strip()
     except requests.exceptions.Timeout as te:
         raise te
+    except requests.exceptions.ConnectionError as ce:
+        raise PromptAnswererError(f"Prompt Answerer is down. Error: {ce}")
+    except PromptAnswererError as pe:
+        raise pe
     except Exception as e:
         raise e

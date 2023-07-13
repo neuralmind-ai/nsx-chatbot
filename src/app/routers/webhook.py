@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 from datetime import datetime
 from typing import Union
 
@@ -14,6 +14,9 @@ from app.services.dialog_360 import (
     post_360_dialog_menu_message,
     post_360_dialog_text_message,
 )
+from app.utils.error_codes import ErrorCodes
+from app.utils.exceptions import ChatbotException, DialogConfigError, WebhookError
+from app.utils.log_templates import log_error
 from settings import settings
 
 router = APIRouter()
@@ -31,6 +34,7 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
         # checks if the message is a question:
         destinatary = body.messages[0]["from"]
         nm_number = request.headers["nm-number"]
+        message = body.messages[0]["text"]["body"] if "text" in body.messages[0] else ""
 
         try:
             if not is_message_a_question(request, body, destinatary, nm_number):
@@ -38,7 +42,6 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             current_index = request.app.state.memory.get_latest_user_index(
                 destinatary, nm_number
             )
-            message = body.messages[0]["text"]["body"]
             # Send a message to the user to let them know the bot is processing their request:
             user_history = request.app.state.memory.retrieve_history(
                 destinatary, nm_number, current_index
@@ -55,63 +58,28 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                 message, destinatary, nm_number, current_index
             )
             post_360_dialog_text_message(destinatary, answer, nm_number)
-        except ValueError as ve:
-            current_index = ""
-            message = body.messages[0]["text"]["body"]
-            post_360_dialog_error_message(
-                destinatary, current_index, nm_number, request.app.state.db
+        except ChatbotException as ce:
+            handle_exception(
+                destinatary, nm_number, message, ce, ce.error_code.value, error_logger
             )
-            error_logger.error(
-                json.dumps(
-                    {
-                        "user_id": destinatary,
-                        "user_message": message,
-                        "error": str(ve),
-                        "traceback": traceback.format_exc(),
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    },
-                    ensure_ascii=False,
-                )
-            )
-            raise ve
         except Timeout as te:
-            user_message = body.messages[0]["text"]["body"]
-            timeout_message = "Parece que o servidor está demorando muito para responder. Por favor, tente novamente mais tarde."
-            post_360_dialog_text_message(destinatary, timeout_message, nm_number)
-            error_logger.error(
-                json.dumps(
-                    {
-                        "user_id": destinatary,
-                        "user_message": user_message,
-                        "error": str(te),
-                        "traceback": traceback.format_exc(),
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    },
-                    ensure_ascii=False,
-                )
+            handle_exception(
+                destinatary,
+                nm_number,
+                message,
+                te,
+                ErrorCodes.TIMEOUT.value,
+                error_logger,
             )
-            raise te
         except Exception as e:
-            current_index = request.app.state.memory.get_latest_user_index(
-                destinatary, nm_number
+            handle_exception(
+                destinatary,
+                nm_number,
+                message,
+                e,
+                ErrorCodes.GENERIC.value,
+                error_logger,
             )
-            message = body.messages[0]["text"]["body"]
-            post_360_dialog_error_message(
-                destinatary, current_index, nm_number, request.app.state.db
-            )
-            error_logger.error(
-                json.dumps(
-                    {
-                        "user_id": destinatary,
-                        "user_message": message,
-                        "error": str(e),
-                        "traceback": traceback.format_exc(),
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    },
-                    ensure_ascii=False,
-                )
-            )
-            raise e
 
         logger.info(
             json.dumps(
@@ -140,78 +108,97 @@ def is_message_a_question(
         True: if the message is a question and should be sent to the chatbot,
         False: if the message is a menu request or if the user is choosing an index.
     """
-
-    if body.messages[0]["type"] == "interactive":
-        # The user selected a index from the menu:
-        selected_index = body.messages[0]["interactive"]["list_reply"]["id"]
-        request.app.state.memory.set_latest_user_index(
-            destinatary, nm_number, selected_index
-        )
-        # Send intro message:
-        post_360_dialog_intro_message(
-            destinatary,
-            selected_index,
-            nm_number,
-            destinatary_history=None,
-            db=request.app.state.db,
-            force_intro=True,
-        )
-        # Save a space in the history, so the history is not empty anymore and the intro message won't be sent again
-        request.app.state.memory.save_history(
-            destinatary, nm_number, selected_index, " "
-        )
-        return False
-
-    message = body.messages[0]["text"]["body"]
-    current_index = request.app.state.memory.get_latest_user_index(
-        destinatary, nm_number
-    )
-    header_indexes = request.headers["indexes"]
-    header_labels = request.headers["labels"]
-    menu_message = request.headers.get("menu-message", settings.menu_message)
-    menu_button_message = request.headers.get("menu-button-message", None)
-    request_menu_message = request.headers.get("request-menu-message", None)
-
-    if menu_message is None:
-        menu_message = settings.menu_message
-    if request_menu_message is None:
-        request_menu_message = settings.request_menu_message
-        request_command = request_menu_message.split(" ")[-1]
-    else:
-        # The request_menu_message must be a string ending with #command
-        request_command = request_menu_message.split(" ")[-1]
-        if not request_command.startswith("#"):
-            raise ValueError(
-                "The request menu message must end with a command starting with #"
+    try:
+        if body.messages[0]["type"] == "interactive":
+            # The user selected a index from the menu:
+            selected_index = body.messages[0]["interactive"]["list_reply"]["id"]
+            request.app.state.memory.set_latest_user_index(
+                destinatary, nm_number, selected_index
             )
-    if menu_button_message is None:
-        menu_button_message = settings.selection_message
-    else:
-        # 360 dialog does not allow button texts over 20 characters
-        if len(menu_button_message) > 20:
-            raise ValueError(
-                "The menu button message can not be over 20 characters long"
+            # Send intro message:
+            post_360_dialog_intro_message(
+                destinatary,
+                selected_index,
+                nm_number,
+                destinatary_history=None,
+                db=request.app.state.db,
+                force_intro=True,
             )
+            # Save a space in the history, so the history is not empty anymore and the intro message won't be sent again
+            request.app.state.memory.save_history(
+                destinatary, nm_number, selected_index, " "
+            )
+            return False
 
-    num_indexes = len(header_indexes.split("$"))
-    if current_index is None and num_indexes == 1:
-        request.app.state.memory.set_latest_user_index(
-            destinatary, nm_number, header_indexes
+        message = body.messages[0]["text"]["body"]
+        current_index = request.app.state.memory.get_latest_user_index(
+            destinatary, nm_number
         )
-        current_index = header_indexes
-    elif (message == request_command or current_index is None) and num_indexes > 1:
-        post_360_dialog_menu_message(
-            destinatary,
-            header_indexes,
-            header_labels,
-            menu_message,
-            request_menu_message,
-            menu_button_message,
-            nm_number,
-        )
-        return False
+        header_indexes = request.headers["indexes"]
+        header_labels = request.headers["labels"]
+        menu_message = request.headers.get("menu-message", settings.menu_message)
+        menu_button_message = request.headers.get("menu-button-message", None)
+        request_menu_message = request.headers.get("request-menu-message", None)
 
-    return True
+        if menu_message is None:
+            menu_message = settings.menu_message
+        if request_menu_message is None:
+            request_menu_message = settings.request_menu_message
+            request_command = request_menu_message.split(" ")[-1]
+        else:
+            # The request_menu_message must be a string ending with #command
+            request_command = request_menu_message.split(" ")[-1]
+            if not request_command.startswith("#"):
+                raise DialogConfigError(
+                    "The request menu message must end with a command starting with #"
+                )
+        if menu_button_message is None:
+            menu_button_message = settings.selection_message
+        else:
+            # 360 dialog does not allow button texts over 20 characters
+            if len(menu_button_message) > 20:
+                raise DialogConfigError(
+                    "The menu button message can not be over 20 characters long"
+                )
+
+        num_indexes = len(header_indexes.split("$"))
+        if current_index is None and num_indexes == 1:
+            request.app.state.memory.set_latest_user_index(
+                destinatary, nm_number, header_indexes
+            )
+            current_index = header_indexes
+        elif (message == request_command or current_index is None) and num_indexes > 1:
+            post_360_dialog_menu_message(
+                destinatary,
+                header_indexes,
+                header_labels,
+                menu_message,
+                request_menu_message,
+                menu_button_message,
+                nm_number,
+            )
+            return False
+        return True
+    except DialogConfigError as de:
+        raise de
+    except Exception as e:
+        raise WebhookError(e)
+
+
+def handle_exception(
+    destinatary: str,
+    nm_number: str,
+    message: str,
+    error: Exception,
+    error_code: int,
+    error_logger: logging.Logger,
+):
+    """
+    Handles exceptions raised by the chatbot by sending the appropriate message to the user, and logging the error.
+    """
+    post_360_dialog_error_message(destinatary, nm_number, error_code)
+    log_error(error_logger, destinatary, nm_number, message, error)
+    raise error
 
 
 @router.post("/webhook")
