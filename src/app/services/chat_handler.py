@@ -169,10 +169,6 @@ class ChatHandler:
         else:
             chat_history = ""
 
-        index_domain = self._db.get_index_information(index, "domain")
-        if not index_domain:
-            index_domain = "documentos em minha base de dados"
-
         # Checks if there is enough tokens available to process the message:
         if (
             model_utils.get_num_tokens(user_message)
@@ -225,7 +221,6 @@ class ChatHandler:
                     "user_id": user_id,
                     "user_message": user_message,
                     "index": index,
-                    "index_domain": index_domain,
                     "reasoning": debug_string,
                     "answer": answer,
                     "timestamp": date,
@@ -292,11 +287,17 @@ class ChatHandler:
         self,
         user_message,
         chat_history,
-        index_domain,
+        index,
         used_faq,
         latency_dict,
         api_key,
     ) -> Tuple[str, str]:
+
+        index_domain = (
+            self._db.get_index_information(index, "domain")
+            or settings.default_index_domain
+        )
+
         full_chat_prompt = self.chat_prompt.format(domain=index_domain)
         prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
 
@@ -362,7 +363,7 @@ class ChatHandler:
                 # If the action is not to finish, gets an observation
                 observation, tool = self.get_observation(
                     action_input,
-                    index_domain,
+                    index,
                     used_faq,
                     latency_dict,
                     api_key,

@@ -6,6 +6,7 @@ from pydantic import BaseSettings, HttpUrl
 # Load environment variables from .env file
 load_dotenv()
 
+
 def get_version():
     """Get version from pyproject.toml
 
@@ -22,6 +23,7 @@ def get_version():
                 return line.split("=")[1].replace('"', "").strip()
     # If version is not found, return unknown
     return "unknown"
+
 
 class Settings(BaseSettings):
     """Whatsapp Bot settings"""
@@ -78,6 +80,9 @@ class Settings(BaseSettings):
     menu_message = "Olá. Escolha um dos itens abaixo para iniciar a conversa."
     selection_message: str = "Selecione um item"
     request_menu_message: str = "Para selecionar outro item futuramente, envie #menu"
+
+    # Domain
+    default_index_domain = "documentos em minha base de dados"
 
     # Azure key vault
     azure_vault_url: str = "https://nm-chatbot-keys.vault.azure.net/"
