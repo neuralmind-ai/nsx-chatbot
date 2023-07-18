@@ -38,6 +38,6 @@ if [ "$BITBUCKET_BRANCH" = "master" ]; then
 
 elif [ "$BITBUCKET_BRANCH" = "staging" ]; then
     # Tag and push the develop image
-    docker tag $IMAGE:"${VERSION}" $IMAGE:"${VERSION}dev"
-    docker push $IMAGE:"${VERSION}dev"
+    docker tag $IMAGE:"${VERSION}" $IMAGE:"${VERSION}-dev"
+    docker push $IMAGE:"${VERSION}-dev"
 fi

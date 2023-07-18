@@ -4,12 +4,12 @@ set -ex
 # Get the version number
 BITBUCKET_BRANCH=$1
 
-if echo $BITBUCKET_BRANCH | grep -qE "SEARCHX-[0-9]+"; then
-    VERSION=$(echo $BITBUCKET_BRANCH | grep -o "SEARCHX-[0-9]*" | tr -d '-')
-elif echo $BITBUCKET_BRANCH | grep -qE "release/*"; then
-    VERSION=${BITBUCKET_BRANCH#release/}
+if echo $BITBUCKET_BRANCH | grep -o "SEARCHX-[0-9]*"; then
+    VERSION=$(echo $BITBUCKET_BRANCH | grep -o "SEARCHX-[0-9]*")
+elif echo $BITBUCKET_BRANCH | grep -o "release/*"; then
+    VERSION="${BITBUCKET_BRANCH#release/}-dev"
 else
-    VERSION="dev${BITBUCKET_COMMIT::8}"
+    VERSION="dev-${BITBUCKET_COMMIT::8}"
 fi
 
 # Transform the version to lowercase

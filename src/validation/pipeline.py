@@ -24,27 +24,34 @@ from rich.progress import Progress, TaskID
 from app.services.chat_handler import ChatHandler
 from app.services.database import JSONLDBManager
 from app.services.memory_handler import JSONMemoryHandler
+from settings import settings as chatbot_settings
+from validation.gsheet_utils import get_datasets_from_sheet, update_evaluation_sheet
 from validation.log_to_table import to_table
 from validation.pipeline_settings import PipelineSettings
 
 
 def get_timestamp():
     """Get current timestamp"""
-    return datetime.utcnow().strftime("%m-%d-%Y-%H-%M-%S")
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 class AnswerLog(BaseModel):
-    index: str = Field(..., description="Index name")
-    domain: str = Field(..., description="Index Domain description")
-    tag: str = Field(..., description="Evaluation description tag")
+    timestamp: str = Field(..., description="Evaluation Timestamp")
+    chatbot_version: str = Field(
+        default=chatbot_settings.version, description="Chatbot Version"
+    )
+    # TODO: Add NSX Version when available
+    nsx_version: str = Field(default="unknown", description="NSX Version")
+    neval_version: str = Field(default=gpt4_evaluator.name, description="Neval Version")
+    index: str = Field(..., description="Index Name")
     question: str = Field(..., description="Dataset Question")
-    gold_answer: str = Field(..., description="Dataset Gold Answer")
-    chatbot_answer: str = Field(..., description="Chatbot Answer")
-    reasoning: str = Field(..., description="chatbot reasoning steps log")
+    expected_answer: str = Field(..., description="Expected answer for the question")
+    answer: str = Field(..., description="Chatbot Answer")
     evaluation: str = Field(..., description="Evaluation result (correct, incorrect)")
+    reasoning: str = Field(..., description="Chatbot reasoning steps log")
     answered: bool = Field(..., description="Flag if question was answered")
     evaluated: bool = Field(..., description="Flag if question was evaluated")
-    answer_latency: float = Field(..., description="Latency in seconds")
+    latency: float = Field(..., description="Latency in seconds")
 
 
 class EvaluationConfig(BaseModel):
@@ -53,9 +60,14 @@ class EvaluationConfig(BaseModel):
     faq: bool = Field(..., description="Use FAQ")
     sense: bool = Field(..., description="Use Sense")
     number_of_questions: int = Field(..., description="Number of questions")
-    timestamp: datetime = Field(
-        default_factory=get_timestamp, description="Evaluation Timestamp"
+    timestamp: str = Field(..., description="Evaluation Timestamp")
+    chatbot_version: str = Field(
+        default=chatbot_settings.version, description="Chatbot Version"
     )
+    # TODO: Add NSX Version when available
+    nsx_version: str = Field(default="unknown", description="NSX Version")
+    # Evaluation Version is the name of the evaluator used
+    neval_version: str = Field(default=gpt4_evaluator.name, description="Neval Version")
 
 
 class EvaluationLog(BaseModel):
@@ -115,8 +127,16 @@ class EvalDataManager:
             container=self._evaluation_container_name
         )
 
-    def list_datasets(self) -> List[str]:
+    def list_datasets(self, datasets_path: Path) -> List[str]:
         """Returns a list of all datasets available in the Container"""
+        dataset_indexes = []
+        for dataset_path in datasets_path.iterdir():
+            if dataset_path.exists():
+                dataset_indexes.append(dataset_path.name)
+
+        if len(dataset_indexes) > 0:
+            return dataset_indexes
+
         return [
             dataset_name for dataset_name in self._dataset_container.list_blob_names()
         ]
@@ -265,7 +285,7 @@ def eval_task(
             "chatbot_answer": chatbot_answer.strip(),
             "evaluation": evaluation,
             "reasoning": reasoning.strip(),
-            "answer_latency": answer_latency,
+            "latency": answer_latency,
             "answered": answered,
             "evaluated": evaluated,
         }
@@ -275,24 +295,14 @@ def eval_task(
 
     return question_data
 
-def create_eval_tag(settings: PipelineSettings) -> str:
-    """Create a tag for the evaluation
 
-    Parameters:
-        settings (PipelineSettings): Pipeline settings
-    Returns:
-        str: Evaluation tag
-    """
-
-    on_off_dict = {True: "ON", False: "OFF"}
+def create_eval_tag() -> str:
+    """Create a tag for the evaluation"""
 
     eval_tag = (
-        f"NSXCHATBOT:{settings.chatbot_version};"
-        f"TIMESTAMP:{get_timestamp()};"
-        f"MODEL:{settings.chatbot_model};"
-        f"MEMORY:{on_off_dict[not settings.disable_memory]};"
-        f"FAQ:{on_off_dict[not settings.disable_faq]};"
-        f"SENSE:{on_off_dict[settings.use_nsx_sense]}"
+        "eval"
+        f"_chatbot-v{chatbot_settings.version}"
+        f"_at:{get_timestamp().replace(' ', '_')}"
     )
     return eval_tag
 
@@ -301,7 +311,8 @@ if __name__ == "__main__":
 
     settings = PipelineSettings()
     # Create a tag  for the evaluation
-    eval_tag = create_eval_tag(settings)
+    eval_timestamp = get_timestamp()
+    eval_tag = create_eval_tag()
 
     # Print Evaluation Settings
     print("Evaluation Settings:")
@@ -342,19 +353,32 @@ if __name__ == "__main__":
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"{eval_tag}_log.json"
 
-    evaluations_path = (
-        data_dir / f"{eval_tag}_evaluations.jsonl"
-    )
+    # Create dataset dir
+    dataset_dir = Path(data_dir, "datasets")
+    dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get the dataset indexes (TODO: get them in a better way)
-    indexes = [
-        dataset.split("_dataset.json")[0] for dataset in data_manager.list_datasets()
+    evaluations_path = data_dir / f"{eval_tag}_evaluations.jsonl"
+
+    # Download the datasets from Google Sheets if its is possible
+    if settings.google_oauth2_token:
+        get_datasets_from_sheet(
+            token=settings.google_oauth2_token,
+            spreadsheet_id=settings.dataset_spreadsheet_id,
+            range_name=settings.dataset_sheet_name,
+            datasets_dir=dataset_dir,
+        )
+
+    # Get the paths of the datasets
+    dataset_paths = [
+        dataset_dir / dataset for dataset in data_manager.list_datasets(dataset_dir)
     ]
-    dataset_paths = [data_dir / f"{index}_dataset.json" for index in indexes]
+
     datasets = [
         data_manager.get_dataset(local_path=dataset_path)
         for dataset_path in dataset_paths
     ]
+
+    indexes = [dataset.index for dataset in datasets]
 
     question_pool = []
 
@@ -415,24 +439,19 @@ if __name__ == "__main__":
                 )
             )
 
-    domain_infos = {
-        index: database.get_index_information(index, "domain") for index in indexes
-    }
-
     # Log the evaluation results
     answers_log = [
         AnswerLog(
+            timestamp=eval_timestamp,
             index=question_data["index"],
-            domain=domain_infos[question_data["index"]],
-            tag=question_data["tag"],
             question=question_data["question"],
-            gold_answer=question_data["gold_answer"],
-            chatbot_answer=question_data["chatbot_answer"],
-            reasoning=question_data["reasoning"],
+            expected_answer=question_data["gold_answer"],
+            answer=question_data["chatbot_answer"],
             evaluation=question_data["evaluation"],
+            reasoning=question_data["reasoning"],
             answered=question_data["answered"],
             evaluated=question_data["evaluated"],
-            answer_latency=question_data["answer_latency"],
+            latency=question_data["latency"],
         )
         for question_data in evaluated_questions
     ]
@@ -444,6 +463,7 @@ if __name__ == "__main__":
             faq=(not settings.disable_faq),
             sense=settings.use_nsx_sense,
             number_of_questions=len(evaluated_questions),
+            timestamp=eval_timestamp,
         ),
         log=answers_log,
     )
@@ -452,7 +472,18 @@ if __name__ == "__main__":
         json.dump(eval_log.dict(), f, ensure_ascii=False, indent=4)
 
     # parse the evaluation log to a csv table
-    to_table(log_path)
+    eval_table_file = to_table(log_path)
+
+    # Update the evaluation google sheet with the evaluation results
+    update_evaluation_sheet(
+        token=settings.google_oauth2_token,
+        spreadsheet_id=settings.spreadsheet_id,
+        range_name=settings.raw_sheet_name,
+        table_file=eval_table_file,
+    )
+
+    # Upload the evaluation log to the DataStore (Evaluation Container)
+    data_manager.upload_evaluations(local_path=log_path)
 
     all_evaluations_df = pd.DataFrame(evaluated_questions)
 

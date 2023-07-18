@@ -28,14 +28,23 @@ definitions:
 pipelines:
   branches:
     master:
-      - step: *evaluate
-      - step: *push-image-to-azure
-        deployment: Production
+      - step:
+          <<: *evaluate
+          name: evaluate-new-chatbot-version
+          deployment: Test
+      - step:
+          <<: *push-image-to-azure
+          name: release-new-chatbot-version
+          deployment: Production
     staging:
-      - step: *evaluate
-      - step: *push-image-to-azure
-        deployment: Staging
-
+      - step:
+          <<: *evaluate
+          name: evaluate-new-chatbot-dev-version
+          deployment: Test
+      - step:
+          <<: *push-image-to-azure
+          name: release-new-chatbot-dev-version
+          deployment: Staging
 
   custom:
     evaluation-pipeline:

@@ -2,6 +2,7 @@ __pycache__
 .env
 src/logs/*
 *.log
+src/app/logs/*
 
 !logs/.gitkeep
 

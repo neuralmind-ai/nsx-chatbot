@@ -1,4 +1,21 @@
-from pydantic import BaseSettings
+from typing import Union
+
+from pydantic import BaseModel, BaseSettings
+
+
+class GoogleCredentialsToken(BaseModel):
+    """Google Credentials Token
+
+    This class is used to store the google credentials token.
+    """
+
+    token: str
+    refresh_token: str
+    token_uri: str
+    client_id: str
+    client_secret: str
+    scopes: list
+    expiry: str
 
 
 class PipelineSettings(BaseSettings):
@@ -12,12 +29,17 @@ class PipelineSettings(BaseSettings):
     evalchatbot_dataset_container: str = "datasets"
     evalchatbot_evaluation_container: str = "evaluations"
 
+    # Google Sheets settings
+    spreadsheet_id: str = ""
+    raw_sheet_name: str = "raw"
+    dataset_spreadsheet_id: str = ""
+    dataset_sheet_name: str = "datasets"
+    google_oauth2_token: Union[GoogleCredentialsToken, None] = None
+
     # Pipeline Settings
     validation_data_dir = "validation/data"  # Path to store the data
     validation_log_dir = "validation/logs"  # Path to store the logs
 
-    # TODO: Use the correct chatbot version here
-    chatbot_version: str = "v0.1.0"
     pipeline_name: str = "evaluation_pipeline"
     max_dataset_questions: int = -1  # -1 for all questions
     max_variant_questions: int = -1  # -1 for all questions

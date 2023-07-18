@@ -84,6 +84,24 @@ The available variables for the evaluation pipeline are as follows.
 - `MAX_DATASET_QUESTIONS` (int): Set the maximum number of questions from each Dataset to use in the evaluation (-1 to use all questions)
 - `MAX_VARIANT_QUESTIONS` (int): Set the maximum number of variants of a question to use in the evaluation (-1 to use all variants)
 
+In order for the evaluation data to be saved in the google spreadsheet, it is necessary to configure 3 environment variables:
+
+- `GOOGLE_OAUTH2_TOKEN`: This variable is needed to authenticate in the google sheets api, it follows the format of a JSON-encoded string and contains information about the Google API access token. For more details on how google authentication works see this link. To get this variable you need to create new credentials in NSX Chatbot Evaluations project in Google Cloud Console. This project is under the NeuralMind organization on the Google Workspace. So, you need to login to the platform with your NeuralMind account to have access to the project.
+
+```bash
+GOOGLE_OAUTH2_TOKEN='{"token": "", "refresh_token": "", "token_uri": "", "client_id": "", "client_secret": "", "scopes": [""], "expiry": ""}'
+```
+
+- `SPREADSHEET_ID`: This script information variable which is the id of the google spreadsheet that the api will manipulate during the evaluation. Remembering again that the project is linked to NeuralMind's google workspace, so the spreadsheet needs to be in that environment. The spreadsheet id can be obtained from its url in the browser as shown below.
+
+```bash
+URL=https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/
+SPREADSHEET_ID=$(echo $URL | grep -oP '(?<=/d/)[^/]+')
+```
+
+- `RAW_SHEET_NAME`: This variable indicates to the script which sheet page the evaluation data will be added to. As a default setting, the `raw` page is used to store the evaluations.
+
+
 ## Run Chatbot evaluations in local environments
 
 To run chatbot evaluations in a local environment, it is necessary to set the evaluation pipeline environment variables in a `.env` file in the `whatsappbot/src` directory. To access the evaluation datasets, you need to configure the `EVALCHATBOT_STORAGE_CS` environment variable with the Azure Blob Storage connection string containing the datasets. The connection string can be obtained by accessing the `evalchatbot` resource in the [Azure portal](https://portal.azure.com/). An example of the configuration file is shown below:

@@ -27,17 +27,20 @@ def parse_evaluation(log: dict):
             log_entry["evaluation"] = "incorreto"
         elif log_entry["evaluation"] == "not evaluated":
             log_entry["evaluation"] = "não avaliado"
+        # Format latency to 2 decimal places
+        if log_entry.get("latency"):
+            log_entry["latency"] = round(log_entry["latency"], 2)
 
 
-def to_table(log_path: Path):
+def to_table(log_path: Path) -> Path:
     """Convert log file to csv table."""
     with log_path.open("r", encoding="utf-8") as f:
         log = json.load(f)
     parse_evaluation(log)
     dataframe = pd.DataFrame(log["log"])
-    dataframe.to_csv(
-        log_path.parent / f"{log_path.stem}.csv", index=False, encoding="utf-8"
-    )
+    table_path = log_path.parent / f"{log_path.stem}.csv"
+    dataframe.to_csv(table_path, index=False, encoding="utf-8")
+    return table_path
 
 
 if __name__ == "__main__":
