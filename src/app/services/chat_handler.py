@@ -10,6 +10,7 @@ from app.prompts import base_prompt
 from app.schemas.database_item import Item
 from app.schemas.search import SearchTool
 from app.services.database import DBManager
+from app.services.dialog_360 import post_360_dialog_text_message
 from app.services.faq_search import FAQSearchTool
 from app.services.memory_handler import MemoryHandler
 from app.services.nsx_search import NSXSearchTool, NSXSenseSearchTool
@@ -122,6 +123,50 @@ class ChatHandler:
             self.use_nsx_sense = not self.use_nsx_sense
             return f"NSX Sense: {('enabled' if self.use_nsx_sense else 'disabled')}"
 
+    def whatsapp_commands(
+        self,
+        user_message: str,
+        user_id: str,
+        chatbot_id: str,
+        index: str,
+    ) -> str:
+        """Manage whatsapp commands
+        Args:
+            - user_message: message sent by the user
+            - user_id: the user id
+            - chatbot_id: the chatbot id
+            - index: the index to search for answers
+        Returns:
+            - response for the user message
+        """
+        if "#reset" == user_message.strip():
+            self._memory.reset_chatbot(user=user_id, chatbot_id=chatbot_id)
+            return "Memória do chatbot limpa!"
+        elif "#version" == user_message.strip():
+            return f"Versão do chatbot: {settings.version}"
+        elif "#debug" == user_message.strip():
+            self._memory.set_user_configs(
+                user=user_id,
+                chatbot_id=chatbot_id,
+                configs={
+                    "whatsapp_verbose": 1,
+                },
+            )
+            return "Modo verboso habilitado!"
+        elif "#forget" == user_message.strip():
+            self._memory.clear_history(user=user_id, chatbot_id=chatbot_id, index=index)
+            return f"A memória no índice {index} foi apagada!"
+        elif "#help" == user_message.strip():
+            return (
+                "Comandos disponíveis:\n"
+                "#reset: Reinicia o chatbot\n"
+                "#forget: Limpa a memória\n"
+                "#version: Exibe a versão do chatbot\n"
+                "#debug: Habilita o modo verboso\n"
+            )
+        else:
+            return "Comando não reconhecido!"
+
     def get_response(
         self,
         user_message: str,
@@ -129,6 +174,7 @@ class ChatHandler:
         chatbot_id: str = "",
         index: str = settings.search_index,
         api_key: str = settings.api_key,
+        whatsapp_verbose: bool = False,
     ) -> str:
         """
         Returns the response for the user message.
@@ -138,10 +184,18 @@ class ChatHandler:
             - chatbot_id: the id of the chatbot (used to access the chat history).
             - index: the index to be used for the search (FAQ and NSX).
             - api_key: the user's API key to be used for the NSX API.
+            - whatsapp_verbose: if True, prints all the steps of the reasoning.
         """
-
+        debug_string = ""
         if user_message.startswith("#") and self.dev_mode:
             return self.dev_mode_action(user_message)
+        elif user_message.startswith("#"):  # whatsapp commands
+            return self.whatsapp_commands(
+                user_message=user_message,
+                user_id=user_id,
+                chatbot_id=chatbot_id,
+                index=index,
+            )
 
         time_begin = time.time()
         # Stores the latency for each step
@@ -184,6 +238,10 @@ class ChatHandler:
             used_faq,
             latency_dict,
             api_key,
+            debug_string,
+            destinatary=user_id,
+            d360_number=chatbot_id,
+            whatsapp_verbose=whatsapp_verbose,
         )
 
         # Moderates the answer
@@ -277,7 +335,6 @@ class ChatHandler:
             )
         )
 
-        # If the debug is not requested, returns the answer
         if not self.return_debug:
             return answer
         # If the debug is requested, returns the answer and the debug string
@@ -291,7 +348,16 @@ class ChatHandler:
         used_faq,
         latency_dict,
         api_key,
-    ) -> Tuple[str, str]:
+        debug_string,
+        whatsapp_verbose=False,
+        destinatary=None,
+        d360_number=None,
+    ):
+        # If whatsapp_verbose is True, it is expected that the destinatary and d360_number are not None
+        if whatsapp_verbose and (destinatary is None or d360_number is None):
+            raise Exception(
+                "If whatsapp_verbose is True, destinatary and d360_number must not be None"
+            )
 
         index_domain = (
             self._db.get_index_information(index, "domain")
@@ -314,6 +380,7 @@ class ChatHandler:
                 model=self._model,
                 stop=[f"Observação {i}:", "Mensagem:"],
             )
+
             try:
                 thought, action = reasoning.split(f"\nAção {i}:")
             except Exception:
@@ -323,6 +390,13 @@ class ChatHandler:
                     f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
                     model=self._model,
                     stop=[f"Observação {i}:", "Mensagem:"],
+                )
+
+            if whatsapp_verbose:
+                post_360_dialog_text_message(
+                    destinatary=destinatary,
+                    message=f"Pensamento {i}: {thought}.\nAção {i}: {action}",
+                    d360_number=d360_number,
                 )
 
             try:
@@ -373,6 +447,13 @@ class ChatHandler:
                 if self.verbose:
                     print(f"Observation {i} (FROM {tool}): {observation}")
 
+                if whatsapp_verbose:
+                    post_360_dialog_text_message(
+                        destinatary=destinatary,
+                        message=f"Observação {i} (DE {tool}):\n{observation}",
+                        d360_number=d360_number,
+                    )
+
                 debug_string += f"Observação {i} ({tool}): {observation}\n"
 
             # Adds the thought, action and observation to the iteration string
@@ -394,6 +475,13 @@ class ChatHandler:
             if self.verbose:
                 print(f"Finalizar Forçado: {answer}")
             debug_string += f"Finalizar Forçado: {answer}\n"
+
+            if whatsapp_verbose:
+                post_360_dialog_text_message(
+                    destinatary=destinatary,
+                    message=f"Finalizar Forçado: {answer}\n",
+                    d360_number=d360_number,
+                )
 
         return answer, debug_string
 

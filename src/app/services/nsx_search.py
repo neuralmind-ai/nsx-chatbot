@@ -43,15 +43,6 @@ class NSXSearchTool:
         self.unanswerable_search = (prompts[self.language]["unanswerable_search"],)
         self.answer_not_found = (prompts[self.language]["answer_not_found"],)
 
-        # self._used_faq = used_faq
-        # self._latench_dict = latency_dict
-        # self._searches_left = searches_left
-        # self.use_nsx_sense = use_nsx_sense
-        # self.disable_faq = disable_faq
-        # self.language = "pt"
-        # self.error_logger = error_logger
-        # self.faq_search = FAQSearch(self.language, )
-
     def search(
         self,
         query: str,

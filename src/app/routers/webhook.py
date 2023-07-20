@@ -54,8 +54,20 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                 request.app.state.db,
             )
 
+            # Check if the user is in the verbose mode: (whatsapp only)
+            whatsapp_verbose = request.app.state.memory.get_user_config(
+                user=destinatary, chatbot_id=nm_number, config="whatsapp_verbose"
+            )
+
+            if not whatsapp_verbose:
+                whatsapp_verbose = False
+
             answer = request.app.state.chatbot.get_response(
-                message, destinatary, nm_number, current_index
+                message,
+                destinatary,
+                nm_number,
+                current_index,
+                whatsapp_verbose=whatsapp_verbose,
             )
             post_360_dialog_text_message(destinatary, answer, nm_number)
         except ChatbotException as ce:

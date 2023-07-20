@@ -251,3 +251,40 @@ class RedisMemoryHandler(MemoryHandler):
         if self.client.hexists(user_id, "latest_index") == 0:
             return None
         return self.client.hget(user_id, "latest_index").decode("utf-8")
+
+    def set_user_configs(self, user: str, chatbot_id: str, configs: dict) -> None:
+        """
+        This method is used to set the user configs. The configs are used for debugging purposes.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+            - configs (dict): The configs to be set.
+                - key (str): The key of the config.
+                - value (str): The value of the config.
+        """
+        user_id = user + "_" + chatbot_id
+        for key, value in configs.items():
+            self.client.hset(user_id, key, value)
+
+    def get_user_config(self, user: str, chatbot_id: str, config: str):
+        """
+        This method is used to get the user configs. The configs are used for debugging purposes.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+            - config (str): The config to be retrieved.
+        """
+        user_id = user + "_" + chatbot_id
+        if self.client.hexists(user_id, config) == 0:
+            return 0
+        return self.client.hget(user_id, config)
+
+    def reset_chatbot(self, user: str, chatbot_id: str) -> None:
+        """
+        This method is used to reset all configs and history of a user in a given index.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+        """
+        user_id = user + "_" + chatbot_id
+        self.client.delete(user_id)
