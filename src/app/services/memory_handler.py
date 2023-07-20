@@ -87,6 +87,46 @@ class MemoryHandler(ABC):
             - str: The last index used by the user.
         """
 
+    @abstractmethod
+    def set_intro_message_sent(self, user: str, chatbot_id: str, index: str) -> None:
+        """
+        This method is used to set the intro message was sent to the user.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+        """
+
+    @abstractmethod
+    def check_intro_message_sent(self, user: str, chatbot_id: str, index: str) -> bool:
+        """
+        This method is used to check if the intro message was already sent to the user.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+        Returns:
+            - bool: True if the intro message was already sent, False otherwise.
+        """
+
+    @abstractmethod
+    def set_disclaimer_sent(self, user: str, chatbot_id: str, index: str) -> None:
+        """
+        This method is used to set the disclaimer was sent to the user.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+        """
+
+    @abstractmethod
+    def check_disclaimer_sent(self, user: str, chatbot_id: str, index: str) -> bool:
+        """
+        This method is used to check if the disclaimer was already sent to the user.
+        Args:
+            - user (str): The id of the user that sent the message.
+            - chatbot_id (str): The id of the chatbot instance.
+        Returns:
+            - bool: True if the disclaimer was already sent, False otherwise.
+        """
+
 
 class JSONMemoryHandler(MemoryHandler):
     """
@@ -164,6 +204,38 @@ class JSONMemoryHandler(MemoryHandler):
         user_id = user + "_" + chatbot_id
         memory = self._open()
         return memory.get(user_id, {}).get("latest_index", None)
+
+    @handle_memory_errors
+    def set_intro_message_sent(self, user: str, chatbot_id: str, index: str) -> None:
+        user_id = user + "_" + chatbot_id
+        memory = self._open()
+        try:
+            memory[user_id][f"{index}_intro_message_sent"] = True
+        except Exception:
+            memory[user_id] = {f"{index}_intro_message_sent": True}
+        self._save(memory=memory)
+
+    @handle_memory_errors
+    def check_intro_message_sent(self, user: str, chatbot_id: str, index: str) -> bool:
+        user_id = user + "_" + chatbot_id
+        memory = self._open()
+        return memory.get(user_id, {}).get(f"{index}_intro_message_sent", False)
+
+    @handle_memory_errors
+    def set_disclaimer_sent(self, user: str, chatbot_id: str, index: str) -> None:
+        user_id = user + "_" + chatbot_id
+        memory = self._open()
+        try:
+            memory[user_id][f"{index}_disclaimer_sent"] = True
+        except Exception:
+            memory[user_id] = {f"{index}_disclaimer_sent": True}
+        self._save(memory=memory)
+
+    @handle_memory_errors
+    def check_disclaimer_sent(self, user: str, chatbot_id: str, index: str) -> bool:
+        user_id = user + "_" + chatbot_id
+        memory = self._open()
+        return memory.get(user_id, {}).get(f"{index}_disclaimer_sent", False)
 
 
 class RedisMemoryHandler(MemoryHandler):
@@ -288,3 +360,33 @@ class RedisMemoryHandler(MemoryHandler):
         """
         user_id = user + "_" + chatbot_id
         self.client.delete(user_id)
+
+    @handle_memory_errors
+    def set_intro_message_sent(self, user: str, chatbot_id: str, index: str) -> None:
+        user_id = user + "_" + chatbot_id
+        self.client.hset(user_id, f"{index}_intro_message_sent", "True")
+
+    @handle_memory_errors
+    def check_intro_message_sent(self, user: str, chatbot_id: str, index: str) -> bool:
+        user_id = user + "_" + chatbot_id
+        if self.client.hexists(user_id, f"{index}_intro_message_sent") == 0:
+            return False
+        return (
+            self.client.hget(user_id, f"{index}_intro_message_sent").decode("utf-8")
+            == "True"
+        )
+
+    @handle_memory_errors
+    def set_disclaimer_sent(self, user: str, chatbot_id: str, index: str) -> None:
+        user_id = user + "_" + chatbot_id
+        self.client.hset(user_id, f"{index}_disclaimer_sent", "True")
+
+    @handle_memory_errors
+    def check_disclaimer_sent(self, user: str, chatbot_id: str, index: str) -> bool:
+        user_id = user + "_" + chatbot_id
+        if self.client.hexists(user_id, f"{index}_disclaimer_sent") == 0:
+            return False
+        return (
+            self.client.hget(user_id, f"{index}_disclaimer_sent").decode("utf-8")
+            == "True"
+        )

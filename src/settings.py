@@ -83,6 +83,12 @@ class Settings(BaseSettings):
 
     # Domain
     default_index_domain = "documentos em minha base de dados"
+    wait_message = "Por favor, aguarde enquanto procuro sua resposta."
+    default_intro_message = "Olá! Sou o chatbot da Neuralmind. Sinta-se livre para conversar comigo e enviar suas perguntas."
+    default_disclaimer_message = (
+        "Espero ter ajudado! Sou bem treinado nos documentos da minha base de dados, mas posso errar."
+        "Recomendo sempre conferir as informações, já que não posso me responsabilizar por possíveis equívocos."
+    )
 
     # Azure key vault
     azure_vault_url: str = "https://nm-chatbot-keys.vault.azure.net/"

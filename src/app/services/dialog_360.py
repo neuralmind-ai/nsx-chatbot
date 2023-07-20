@@ -79,9 +79,7 @@ def post_360_dialog_intro_message(
     destinatary: str,
     index: str,
     d360_number: str,
-    destinatary_history: str,
     db: DBManager,
-    force_intro: bool = False,
 ):
     """
     Sends a message introducing the chatbot to the user, by using the information from the index configuration in CosmosDB.
@@ -91,19 +89,12 @@ def post_360_dialog_intro_message(
         destinatary (str): The destinatary's phone number.
         index (str): The index name.
         d360_number (str): The chatbot's number.
-        destinatary_history (str): The destinatary's conversation history, used to know if it is the first message in the conversation.
         db (DBManager): The CosmosDB manager, used to get information about the index.
-        force_intro (bool): If True, the introduction message is sent even if the user has already sent a message.
     """
-    message_prefix = db.get_index_information(index, "message_prefix")
-    if (force_intro) and (message_prefix):
-        intro_message = message_prefix
-    elif (destinatary_history is None) and (message_prefix):
-        intro_message = f"{message_prefix}\nPor favor, aguarde enquanto busco a resposta para sua pergunta..."
-    else:
-        intro_message = (
-            "Por favor, aguarde enquanto busco a resposta para sua pergunta..."
-        )
+    intro_message = (
+        db.get_index_information(index, "message_prefix")
+        or settings.default_intro_message
+    )
     post_360_dialog_text_message(destinatary, intro_message, d360_number)
 
 
@@ -122,3 +113,21 @@ def post_360_dialog_error_message(
     """
     error_message = f"Desculpe, ocorreu um erro no processamento da sua mensagem. Por favor, tente novamente mais tarde.\nErro {error_code}."
     post_360_dialog_text_message(destinatary, error_message, d360_number)
+
+
+def post_360_dialog_disclaimer_message(
+    destinatary: str, d360_number: str, index: str, db: DBManager
+):
+    """
+    Sends a disclaimer message informing users that the chatbot is not responsible for eventual errors in the information provided.
+    Args:
+        destinatary (str): The destinatary's phone number.
+        d360_number (str): The chatbot's number.
+        index(str): The index name.
+        db (DBManager): The CosmosDB manager, used to get information about the index.
+    """
+    disclaimer_message = (
+        db.get_index_information(index, "disclaimer")
+        or settings.default_disclaimer_message
+    )
+    post_360_dialog_text_message(destinatary, disclaimer_message, d360_number)

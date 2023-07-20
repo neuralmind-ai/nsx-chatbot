@@ -9,6 +9,7 @@ from requests.exceptions import Timeout
 from app.schemas.messages import WebhookMessage, WebhookStatus
 from app.services.build_timed_logger import build_timed_logger
 from app.services.dialog_360 import (
+    post_360_dialog_disclaimer_message,
     post_360_dialog_error_message,
     post_360_dialog_intro_message,
     post_360_dialog_menu_message,
@@ -42,16 +43,27 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             current_index = request.app.state.memory.get_latest_user_index(
                 destinatary, nm_number
             )
-            # Send a message to the user to let them know the bot is processing their request:
-            user_history = request.app.state.memory.retrieve_history(
-                destinatary, nm_number, current_index
-            )
-            post_360_dialog_intro_message(
+            # Send a message introducing the chatbot if it's the first message from the user
+            if (
+                request.app.state.memory.check_intro_message_sent(
+                    destinatary, nm_number, current_index
+                )
+                is False
+            ):
+                post_360_dialog_intro_message(
+                    destinatary,
+                    current_index,
+                    nm_number,
+                    request.app.state.db,
+                )
+                request.app.state.memory.set_intro_message_sent(
+                    destinatary, nm_number, current_index
+                )
+            # Send a message saying that the chatbot is processing the user's question
+            post_360_dialog_text_message(
                 destinatary,
-                current_index,
+                settings.wait_message,
                 nm_number,
-                user_history,
-                request.app.state.db,
             )
 
             # Check if the user is in the verbose mode: (whatsapp only)
@@ -70,6 +82,20 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
                 whatsapp_verbose=whatsapp_verbose,
             )
             post_360_dialog_text_message(destinatary, answer, nm_number)
+            # Send a disclaimer message if the user has not seen it yet
+            if (
+                request.app.state.memory.check_disclaimer_sent(
+                    destinatary, nm_number, current_index
+                )
+                is False
+            ):
+                post_360_dialog_disclaimer_message(
+                    destinatary, nm_number, current_index, request.app.state.db
+                )
+                request.app.state.memory.set_disclaimer_sent(
+                    destinatary, nm_number, current_index
+                )
+
         except ChatbotException as ce:
             handle_exception(
                 destinatary, nm_number, message, ce, ce.error_code.value, error_logger
@@ -132,13 +158,10 @@ def is_message_a_question(
                 destinatary,
                 selected_index,
                 nm_number,
-                destinatary_history=None,
-                db=request.app.state.db,
-                force_intro=True,
+                request.app.state.db,
             )
-            # Save a space in the history, so the history is not empty anymore and the intro message won't be sent again
-            request.app.state.memory.save_history(
-                destinatary, nm_number, selected_index, " "
+            request.app.state.memory.set_intro_message_sent(
+                destinatary, nm_number, selected_index
             )
             return False
 

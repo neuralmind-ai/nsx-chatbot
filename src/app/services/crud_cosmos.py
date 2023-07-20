@@ -53,5 +53,5 @@ class CosmosDBManager(DBManager):
                 item=index_id, partition_key=index_id
             )
             return item[information]
-        except CosmosResourceNotFoundError:
+        except (CosmosResourceNotFoundError, KeyError):
             return None
