@@ -101,6 +101,11 @@ SPREADSHEET_ID=$(echo $URL | grep -oP '(?<=/d/)[^/]+')
 
 - `RAW_SHEET_NAME`: This variable indicates to the script which sheet page the evaluation data will be added to. As a default setting, the `raw` page is used to store the evaluations.
 
+Datasets can also be obtained from a Google spreadsheet. To do this, simply define the following environment variables:
+
+- `DATASET_SPREADSHEET_ID`: Indicates to the script the ID of the Google spreadsheet where the datasets are stored.
+
+- `DATASET_SHEET_NAME`: Name of the page in the spreadsheet with `DATASET_SPREADSHEET_ID` where the datasets are stored.
 
 ## Run Chatbot evaluations in local environments
 
@@ -129,6 +134,20 @@ python validation/pipeline.py
 > Remember that the prompt-answerer must be running at `localhost:7000` for the chatbot and evaluation to work correctly.
 
 At the end of the experiment, a table with a summary of the results is displayed. The data and logs of the experiment will be available in the `validation/data` and `validation/logs` directories, respectively. The files are identified by the name defined in `PIPELINE_NAME`.
+
+## Special evaluation Settings
+
+It is possible to select a list of indexes/datasets that will be evaluated in the pipeline. To do this, just set the environment variable `EVALUATION_INDEXES`. This variable accepts a list of names of **existing** NSX indexes in JSON String format. An example of how to configure this variable is shown below.
+
+```bash
+EVALUATION_INDEXES='["FUNDEP_Cardiologia", "FUNDEP_Ciencias", "FUNDEP_Medicina", "FUNDEP_Pneumologia", "FUNDEP_Paraopeba"]'
+```
+
+It is also possible to map the names of the indexes defined in the dataset to other indexes in the same database but indexed in a different configuration. To do this, simply set the environment variable `INDEX_MAPPING` to the desired mapping. The `INDEX_MAPPING` variable follows the format of a JSON String where the keys are the original names of the indexes in the evaluation dataset and the value is the name of the index that should be used in the evaluation. An example of how to configure this variable is shown below.
+
+```bash
+INDEX_MAPPING='{"FUNDEP_Cardiologia": "FUNDEP_Cardiologia_2", "FUNDEP_Ciencias": "FUNDEP_Ciencias_Modified", "FUNDEP_Medicina": "Medicina_FIXED"}'
+```
 
 ## Debug Chat
 

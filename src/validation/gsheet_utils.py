@@ -120,8 +120,8 @@ def get_datasets_from_sheet(
 
         # Skip header
         for row in values[1:]:
-            dataset_name = row[0]
-            index = row[1]
+            dataset_name = row[1]
+            index = row[2]
 
             if dataset_name not in datasets_questions.keys():
                 datasets_questions[dataset_name] = {"index": index, "questions": []}
@@ -131,9 +131,9 @@ def get_datasets_from_sheet(
                     creator="NeuralMind",
                     index=index,
                     variants=[
-                        row[2],
+                        row[4],
                     ],
-                    answer=row[3],
+                    answer=row[5],
                 )
             )
 

@@ -33,7 +33,7 @@ class PipelineSettings(BaseSettings):
     spreadsheet_id: str = ""
     raw_sheet_name: str = "raw"
     dataset_spreadsheet_id: str = ""
-    dataset_sheet_name: str = "datasets"
+    dataset_sheet_name: str = "dataset ouro"
     google_oauth2_token: Union[GoogleCredentialsToken, None] = None
 
     # Pipeline Settings
@@ -43,6 +43,10 @@ class PipelineSettings(BaseSettings):
     pipeline_name: str = "evaluation_pipeline"
     max_dataset_questions: int = -1  # -1 for all questions
     max_variant_questions: int = -1  # -1 for all questions
+    
+    # Special evaluation settings
+    evaluation_indexes: list = []
+    index_mapping: dict = {}
 
     # Concurrency settings
     max_concurrent_questions: int = 4

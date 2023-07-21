@@ -274,7 +274,7 @@ def eval_task(
 
     except Exception as e:
         print(f"Exception: {e}, Type: {type(e)}")
-        reasoning = ""
+        reasoning = "Indisponível"
         chatbot_answer = "Erro ao obter a resposta para a pergunta."
         evaluation = "not evaluated"
 
@@ -378,6 +378,22 @@ if __name__ == "__main__":
         for dataset_path in dataset_paths
     ]
 
+    # Filter the datasets to evaluate by the indexes if it is defined
+    if len(settings.evaluation_indexes) > 0:
+        datasets = [
+            dataset
+            for dataset in datasets
+            if dataset.index in settings.evaluation_indexes
+        ]
+
+    # Map the dataset indexes to the new indexes if it is defined
+    if len(settings.index_mapping) > 0:
+        for dataset in datasets:
+            # Get the new index name if it is defined or keep the original index name
+            index = settings.index_mapping.get(dataset.index, dataset.index)
+            dataset.index = index
+
+    # Get the indexes of the datasets to later identify the evaluation results
     indexes = [dataset.index for dataset in datasets]
 
     question_pool = []

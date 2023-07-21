@@ -8,10 +8,17 @@ definitions:
         caches:
           - pip
         script:
-          - ssh-keyscan -H $DEV_IP >> ~/.ssh/known_hosts
-          - ssh -NL 7000:localhost:7000 -f ubuntu@$DEV_IP
+          - |
+            if [ "$SERVER" = "dev" ]; then
+              SERVER_IP=$DEV_IP
+            elif [ "$SERVER" = "prod" ]; then
+              SERVER_IP=$PROD_IP
+            fi
+          - ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
+          - ssh -NL 7000:localhost:7000 -f ubuntu@$SERVER_IP
           - pip install -r requirements-eval.txt
           - cd src
+          - export ENVIRONMENT=eval
           - python validation/pipeline.py
         artifacts:
           - src/validation/logs/**
@@ -31,7 +38,7 @@ pipelines:
       - step:
           <<: *evaluate
           name: evaluate-new-chatbot-version
-          deployment: Test
+          deployment: Production
       - step:
           <<: *push-image-to-azure
           name: release-new-chatbot-version
@@ -40,7 +47,7 @@ pipelines:
       - step:
           <<: *evaluate
           name: evaluate-new-chatbot-dev-version
-          deployment: Test
+          deployment: Staging
       - step:
           <<: *push-image-to-azure
           name: release-new-chatbot-dev-version
@@ -49,13 +56,21 @@ pipelines:
   custom:
     evaluation-pipeline:
       - variables:
+          - name: SERVER
+            default: dev
+            allowed-values:
+              - dev
+              - prod
           - name: PIPELINE_NAME
             default: chatbot_eval
           - name: CHATBOT_MODEL
             default: gpt-3.5-turbo-azure
             allowed-values:
               - gpt-3.5-turbo-azure
+              - gpt-3.5-turbo-0613-azure
+              - gpt-3.5-turbo-16k-azure
               - gpt-3.5-turbo
+              - gpt-3.5-turbo-16k
               - gpt-4
           - name: DISABLE_MEMORY
             default: false
@@ -76,6 +91,10 @@ pipelines:
             default: -1
           - name: MAX_VARIANT_QUESTIONS
             default: 1
+          - name: EVALUATION_INDEXES
+            default: "[]"
+          - name: INDEX_MAPPING
+            default: "{}"
       - step: *evaluate
 
     push-custom-image-to-azure:
