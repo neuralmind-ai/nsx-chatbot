@@ -4,7 +4,6 @@ definitions:
   steps:
     - step: &evaluate
         name: Evaluate
-        deployment: Test
         caches:
           - pip
         script:
@@ -31,27 +30,30 @@ definitions:
         services:
           - docker
 
-
 pipelines:
   branches:
     master:
-      - step:
-          <<: *evaluate
-          name: evaluate-new-chatbot-version
+      - stage:
+          name: deploy-to-prod
           deployment: Production
-      - step:
-          <<: *push-image-to-azure
-          name: release-new-chatbot-version
-          deployment: Production
+          steps:
+            - step:
+                <<: *evaluate
+                name: evaluate-new-chatbot-version
+            - step:
+                <<: *push-image-to-azure
+                name: release-new-chatbot-version
     staging:
-      - step:
-          <<: *evaluate
-          name: evaluate-new-chatbot-dev-version
+      - stage:
+          name: deploy-to-dev
           deployment: Staging
-      - step:
-          <<: *push-image-to-azure
-          name: release-new-chatbot-dev-version
-          deployment: Staging
+          steps:
+            - step:
+                <<: *evaluate
+                name: evaluate-new-chatbot-dev-version
+            - step:
+                <<: *push-image-to-azure
+                name: release-new-chatbot-dev-version
 
   custom:
     evaluation-pipeline:
@@ -95,7 +97,10 @@ pipelines:
             default: "[]"
           - name: INDEX_MAPPING
             default: "{}"
-      - step: *evaluate
+
+      - step:
+          <<: *evaluate
+          name: evaluate-new-chatbot-dev-version
 
     push-custom-image-to-azure:
       - step:
