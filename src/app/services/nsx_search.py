@@ -40,8 +40,8 @@ class NSXSearchTool:
         # self._index = index
         self.language = language
         self._api_key = api_key
-        self.unanswerable_search = (prompts[self.language]["unanswerable_search"],)
-        self.answer_not_found = (prompts[self.language]["answer_not_found"],)
+        self.unanswerable_search = prompts[self.language]["unanswerable_search"]
+        self.answer_not_found = prompts[self.language]["answer_not_found"]
 
     def search(
         self,
@@ -50,6 +50,7 @@ class NSXSearchTool:
         api_key: str,
         searches_left: int,
         num_docs: int = 1,
+        bm25_only: bool = False,
     ) -> str:
         """
         Gets the first document from NSX.
@@ -60,6 +61,7 @@ class NSXSearchTool:
             - api_key: the user's API key to be used for the NSX API.
             - searches_left: number of searches the model can still do for the current message.
             - num_docs: number of documents to be returned by NSX.
+            - bm25_only: if True, returns only the bm25 list.
 
         Returns:
             str: The answer to the query (with concatenated num_docs from NSX) or
@@ -72,10 +74,17 @@ class NSXSearchTool:
             "max_docs_to_return": settings.max_docs_to_return,
             "format_response": False,
         }
+
+        # If bm25_only is True, returns only the bm25 list
+        if bm25_only:
+            params["return_reference"] = 1
+            params["neural_ranking"] = False
+
         # Headers for the request
         headers = {
             "Authorization": f"APIKey {api_key}",
         }
+
         try:
             response = retry_request_with_timeout(
                 RequestMethod.GET,
@@ -84,25 +93,36 @@ class NSXSearchTool:
                 headers=headers,
                 request_timeout=settings.nsx_timeout,
             )
-        except requests.exceptions.Timeout as te:
-            raise te
-        except Exception as e:
-            raise e
-        if response.ok:
-            response = response.json()
-            response_len = len(response["response_reranker"])
-            if response_len > 0:
+
+            response.raise_for_status()
+
+            response_json = response.json()
+
+            if bm25_only:
+                nsx_docs = response_json["response_reference"]
+            else:
+                nsx_docs = response_json["response_reranker"]
+
+            nsx_docs_len = len(nsx_docs)
+
+            if nsx_docs_len:
                 docs = ""
-                for i in range(min(num_docs, response_len)):
-                    docs += f"{response['response_reranker'][i]['paragraphs'][0]}\n"
+                for doc_idx in range(min(num_docs, nsx_docs_len)):
+                    docs += f"{nsx_docs[doc_idx]['paragraphs'][0]}\n"
                 return docs.strip()
             elif searches_left == 0:
                 return self.unanswerable_search
             else:
                 return self.answer_not_found
-        if response.status_code == 403:
-            raise NSXAuthenticationError("Invalid API key.")
-        raise NSXSearchError(f"Error in NSX: {response.json()['message']}.")
+
+        except requests.HTTPError as he:
+            if he.response.status_code == 403:
+                raise NSXAuthenticationError("Invalid API key.")
+            raise NSXSearchError(f"Error in NSX: {he.response.json()['message']}.")
+        except requests.exceptions.Timeout as te:
+            raise te
+        except Exception as e:
+            raise e
 
 
 class NSXSenseSearchTool:
@@ -111,10 +131,17 @@ class NSXSenseSearchTool:
 
         self.language = language
         self._api_key = api_key
-        self.unanswerable_search = (prompts[self.language]["unanswerable_search"],)
-        self.answer_not_found = (prompts[self.language]["answer_not_found"],)
+        self.unanswerable_search = prompts[self.language]["unanswerable_search"]
+        self.answer_not_found = prompts[self.language]["answer_not_found"]
 
-    def search(self, query: str, index: str, api_key: str, searches_left: int) -> str:
+    def search(
+        self,
+        query: str,
+        index: str,
+        api_key: str,
+        searches_left: int,
+        bm25_only: bool = False,
+    ) -> str:
         """
         Gets a response using NSX sense.
 
@@ -123,6 +150,7 @@ class NSXSenseSearchTool:
             - index: the index to be used for the search.
             - api_key: the user's API key to be used for the NSX API.
             - searches_left: number of searches the model can still do for the current message.
+            - bm25_only: if True, returns only the bm25 list.
 
         Returns:
             - A response built with NSX Sense.
@@ -134,10 +162,17 @@ class NSXSenseSearchTool:
             "max_docs_to_return": settings.max_docs_to_return,
             "format_response": False,
         }
+
+        # If bm25_only is True, returns only the bm25 list
+        if bm25_only:
+            params["return_reference"] = 1
+            params["neural_ranking"] = False
+
         # Headers for the request
         headers = {
             "Authorization": f"APIKey {api_key}",
         }
+
         try:
             response = retry_request_with_timeout(
                 RequestMethod.GET,
@@ -155,10 +190,17 @@ class NSXSenseSearchTool:
 
         response = response.json()
 
-        documents = [
-            {"paragraphs": response_reranker["paragraphs"][0]}
-            for response_reranker in response["response_reranker"]
-        ]
+        if bm25_only:
+            documents = [
+                {"paragraphs": doc["paragraphs"][0]}
+                for doc in response["response_reference"]
+            ]
+
+        else:
+            documents = [
+                {"paragraphs": response_reranker["paragraphs"][0]}
+                for response_reranker in response["response_reranker"]
+            ]
 
         if len(documents) == 0:
             if searches_left == 0:
@@ -198,9 +240,7 @@ class NSXSenseSearchTool:
         if not response.ok:
             r = response.json()
             if r.get("detail") is not None:
-                raise SenseSearchError(
-                    f"Error in MultidocQA: {r.get('detail')}"
-                )
+                raise SenseSearchError(f"Error in MultidocQA: {r.get('detail')}")
             else:
                 raise SenseSearchError(
                     f"Error in MultidocQA: {r}, status: {response.status_code}"

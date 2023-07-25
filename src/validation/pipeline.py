@@ -255,6 +255,7 @@ def eval_task(
             user_id=question_data["tag"],
             chatbot_id=f"{question_data['index']}_chat",
             index=question_data["index"],
+            bm25_only=settings.bm25_only,
         )
         reasoning, chatbot_answer = chatbot_answer.split("Answer:")
         answered = True
@@ -322,6 +323,7 @@ if __name__ == "__main__":
     print("Disable Memory:", settings.disable_memory)
     print("Disable FAQ:", settings.disable_faq)
     print("Use NSX Sense:", settings.use_nsx_sense)
+    print("BM25 Only:", settings.bm25_only)
 
     database = JSONLDBManager(
         chat_history_path=settings.database_path,

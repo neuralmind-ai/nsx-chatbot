@@ -81,6 +81,7 @@ The available variables for the evaluation pipeline are as follows.
 - `DISABLE_MEMORY` (bool): Disables the chatbot memory feature in the evaluation (Accepted values: false or true)
 - `DISABLE_FAQ` (bool): Disable the chatbot FAQ feature in the review (Accepted values: false or true)
 - `USE_NSX_SENSE` (bool): Use NSX-Sense in chatbot search feature (Accepted values: false or true)
+- `BM25_ONLY` (bool): Use only BM25 results list in NSX/SENSE search
 - `MAX_DATASET_QUESTIONS` (int): Set the maximum number of questions from each Dataset to use in the evaluation (-1 to use all questions)
 - `MAX_VARIANT_QUESTIONS` (int): Set the maximum number of variants of a question to use in the evaluation (-1 to use all variants)
 
@@ -118,9 +119,10 @@ CHATBOT_MODEL="gpt-4" # Reasoning model
 DISABLE_MEMORY=true
 DISABLE_FAQ=true
 USE_NSX_SENSE=false # Don't use SENSE, use NSX first document instead
+BM25_ONLY=false
 VERBOSE=false
 MAX_DATASET_QUESTIONS=-1 # Use all dataset questions
-MAX_VARIANT_QUESTIONS= # Use only one variant of each question
+MAX_VARIANT_QUESTIONS=1 # Use only one variant of each question
 ```
 
 In the example above, we set up a Chatbot evaluation that uses `gpt-4` to answer questions. The `memory`, `FAQ` features will not be used, and the chatbot will not use `SENSE` to obtain search results. Additionally, in this experiment, only one variant of each question from the datasets will be evaluated.

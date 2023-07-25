@@ -43,7 +43,7 @@ class PipelineSettings(BaseSettings):
     pipeline_name: str = "evaluation_pipeline"
     max_dataset_questions: int = -1  # -1 for all questions
     max_variant_questions: int = -1  # -1 for all questions
-    
+
     # Special evaluation settings
     evaluation_indexes: list = []
     index_mapping: dict = {}
@@ -59,6 +59,7 @@ class PipelineSettings(BaseSettings):
     dev_mode: bool = False
     verbose: bool = False
     return_debug: bool = True
+    bm25_only: bool = False
 
     database_path: str = "validation/config/database.jsonl"
     memory_path: str = "validation/config/memory.json"

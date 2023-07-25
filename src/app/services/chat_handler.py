@@ -75,8 +75,6 @@ class ChatHandler:
         self.summary_prompt = prompts[self.language]["new_summary_prompt"]
 
         # Useful prompt snippets:
-        self.answer_not_found = prompts[self.language]["answer_not_found"]
-        self.unanswerable_search = prompts[self.language]["unanswerable_search"]
         self.forced_finish = prompts[self.language]["forced_finish"]
 
         # Feature managers
@@ -175,6 +173,7 @@ class ChatHandler:
         index: str = settings.search_index,
         api_key: str = settings.api_key,
         whatsapp_verbose: bool = False,
+        bm25_only: bool = False,
     ) -> str:
         """
         Returns the response for the user message.
@@ -185,6 +184,7 @@ class ChatHandler:
             - index: the index to be used for the search (FAQ and NSX).
             - api_key: the user's API key to be used for the NSX API.
             - whatsapp_verbose: if True, prints all the steps of the reasoning.
+            - bm25_only: if True, only uses BM25 to search for answers.
         """
         debug_string = ""
         if user_message.startswith("#") and self.dev_mode:
@@ -242,6 +242,7 @@ class ChatHandler:
             destinatary=user_id,
             d360_number=chatbot_id,
             whatsapp_verbose=whatsapp_verbose,
+            bm25_only=bm25_only,
         )
 
         # Moderates the answer
@@ -352,6 +353,7 @@ class ChatHandler:
         whatsapp_verbose=False,
         destinatary=None,
         d360_number=None,
+        bm25_only=False,
     ):
         # If whatsapp_verbose is True, it is expected that the destinatary and d360_number are not None
         if whatsapp_verbose and (destinatary is None or d360_number is None):
@@ -442,6 +444,7 @@ class ChatHandler:
                     latency_dict,
                     api_key,
                     searches_left,
+                    bm25_only,
                 )
 
                 if self.verbose:
@@ -493,6 +496,7 @@ class ChatHandler:
         latency_dict: Dict[str, float],
         api_key: str,
         searches_left: int,
+        bm25_only: bool = False,
     ) -> Tuple[str, SearchTool]:
         """
         Returns the observation for the message.
@@ -504,6 +508,7 @@ class ChatHandler:
             - latency_dict: dictionary containing the latency for each step.
             - api_key: the user's API key to be used for the NSX API.
             - searches_left: number of searches the model can still do for the current message.
+            - bm25_only: if True, only uses BM25 to search for answers.
 
         Returns:
             str: The answer to the query, if the query is in the FAQ, or
@@ -522,7 +527,7 @@ class ChatHandler:
             if self.use_nsx_sense:
                 time_nsx_sense_answer = time.time()
                 observation = self.nsx_sense_search.search(
-                    query, index, api_key, searches_left
+                    query, index, api_key, searches_left, bm25_only
                 )
                 latency_dict["nsx_sense_answer"] = time.time() - time_nsx_sense_answer
                 tool = SearchTool.SENSE
@@ -530,7 +535,7 @@ class ChatHandler:
                 # Get the first document from NSX
                 time_nsx_answer = time.time()
                 observation = self.nsx_search.search(
-                    query, index, api_key, searches_left
+                    query, index, api_key, searches_left, bm25_only
                 )
                 latency_dict["nsx_answer"] = time.time() - time_nsx_answer
                 tool = SearchTool.NSX

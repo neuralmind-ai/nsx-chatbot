@@ -89,6 +89,11 @@ pipelines:
             allowed-values:
               - false
               - true
+          - name: BM25_ONLY
+            default: false
+            allowed-values:
+              - false
+              - true
           - name: MAX_DATASET_QUESTIONS
             default: -1
           - name: MAX_VARIANT_QUESTIONS
