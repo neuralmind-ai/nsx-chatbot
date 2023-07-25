@@ -5,11 +5,12 @@ import sys
 sys.path.append(os.getcwd())
 
 import json
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
 
 import pandas as pd
 from azure.storage.blob import BlobServiceClient
@@ -17,6 +18,7 @@ from neval import Evaluator, NevalSummary
 from neval.models import Dataset, DatasetEvaluation
 from neval.qa import build_evaluation, gpt4_evaluator
 from neval.tasks import CompletionsException, completions
+from neval.utils import generate_uuid
 from pydantic import BaseModel, Field
 from rich import print, progress
 from rich.progress import Progress, TaskID
@@ -36,12 +38,13 @@ def get_timestamp():
 
 
 class AnswerLog(BaseModel):
+    evaluation_id: str = Field(..., description="Evaluation ID")
     timestamp: str = Field(..., description="Evaluation Timestamp")
     chatbot_version: str = Field(
         default=chatbot_settings.version, description="Chatbot Version"
     )
-    # TODO: Add NSX Version when available
-    nsx_version: str = Field(default="unknown", description="NSX Version")
+    # TODO: Get NSX Version using the NSX API when available
+    nsx_version: str = Field(default="0.41.0", description="NSX Version")
     neval_version: str = Field(default=gpt4_evaluator.name, description="Neval Version")
     index: str = Field(..., description="Index Name")
     question: str = Field(..., description="Dataset Question")
@@ -52,10 +55,15 @@ class AnswerLog(BaseModel):
     answered: bool = Field(..., description="Flag if question was answered")
     evaluated: bool = Field(..., description="Flag if question was evaluated")
     latency: float = Field(..., description="Latency in seconds")
+    eval_prompt_tokens: int = Field(..., description="Number of tokens in the prompt")
+    eval_completion_tokens: int = Field(
+        ..., description="Number of tokens in the completion"
+    )
+    metadata: str = Field(..., description="Evaluation metadata")
 
 
 class EvaluationConfig(BaseModel):
-    tag: str = Field(..., description="Evaluation description tag")
+    id: str = Field(..., description="Evaluation ID")
     memory: bool = Field(..., description="Use Memory")
     faq: bool = Field(..., description="Use FAQ")
     sense: bool = Field(..., description="Use Sense")
@@ -64,10 +72,11 @@ class EvaluationConfig(BaseModel):
     chatbot_version: str = Field(
         default=chatbot_settings.version, description="Chatbot Version"
     )
-    # TODO: Add NSX Version when available
-    nsx_version: str = Field(default="unknown", description="NSX Version")
+    # TODO: Get NSX Version using the NSX API when available
+    nsx_version: str = Field(default="0.41.0", description="NSX Version")
     # Evaluation Version is the name of the evaluator used
     neval_version: str = Field(default=gpt4_evaluator.name, description="Neval Version")
+    metadata: str = Field(..., description="Evaluation metadata")
 
 
 class EvaluationLog(BaseModel):
@@ -135,7 +144,7 @@ class EvalDataManager:
                 dataset_indexes.append(dataset_path.name)
 
         if len(dataset_indexes) > 0:
-            return dataset_indexes
+            return sorted(dataset_indexes)
 
         return [
             dataset_name for dataset_name in self._dataset_container.list_blob_names()
@@ -204,7 +213,9 @@ class EvalDataManager:
                 print(e)
 
 
-def evaluate(eval_content: str, evaluator: Evaluator, endpoint: str) -> str:
+def evaluate(
+    eval_content: str, evaluator: Evaluator, endpoint: str
+) -> Tuple[str, Dict[str, int]]:
     """Evaluate the chatbot answer for a question"""
 
     messages = [
@@ -219,12 +230,10 @@ def evaluate(eval_content: str, evaluator: Evaluator, endpoint: str) -> str:
         "configurations": evaluator.settings,
     }
 
-    try:
-        response = completions(payload, endpoint)
-        grade = response["text"]
-        return grade.split(":")[1].strip()
-    except CompletionsException:
-        return "evaluation error"
+    response = completions(payload, endpoint)
+    grade = response["text"].split(":")[1].strip()
+    tokens_usage = response["tokens_usage"]
+    return grade, tokens_usage
 
 
 def eval_task(
@@ -249,10 +258,13 @@ def eval_task(
     answer_latency = time.time()
     answered = False
     evaluated = False
+    eval_prompt_tokens = 0
+    eval_completion_tokens = 0
+
     try:
         chatbot_answer = chatbot.get_response(
             user_message=question_data["question"],
-            user_id=question_data["tag"],
+            user_id=question_data["id"],
             chatbot_id=f"{question_data['index']}_chat",
             index=question_data["index"],
             bm25_only=settings.bm25_only,
@@ -260,26 +272,37 @@ def eval_task(
         reasoning, chatbot_answer = chatbot_answer.split("Answer:")
         answered = True
 
-        eval_content = evaluator.prompt.template.format(
-            question=question_data["question"],
-            answer=chatbot_answer.strip(),
-            groundtruth=question_data["gold_answer"],
-        ).strip()
-
-        evaluation = evaluate(
-            eval_content, evaluator, settings.prompt_answerer_endpoint
-        )
-
-        if evaluation != "evaluation error":
-            evaluated = True
-
     except Exception as e:
-        print(f"Exception: {e}, Type: {type(e)}")
+        print(f"Error getting chatbot answer: {e}, Type: {type(e)}")
         reasoning = "Indisponível"
         chatbot_answer = "Erro ao obter a resposta para a pergunta."
-        evaluation = "not evaluated"
 
     answer_latency = time.time() - answer_latency
+
+    if answered:
+        try:
+
+            eval_content = evaluator.prompt.template.format(
+                question=question_data["question"],
+                answer=chatbot_answer.strip(),
+                groundtruth=question_data["gold_answer"],
+            ).strip()
+
+            evaluation, tokens_usage = evaluate(
+                eval_content, evaluator, settings.prompt_answerer_endpoint
+            )
+
+            eval_prompt_tokens = tokens_usage["prompt_tokens"]
+            eval_completion_tokens = tokens_usage["completion_tokens"]
+            evaluated = True
+
+        except CompletionsException as e:
+            print(f"Error evaluating chatbot answer: {e}, Type: {type(e)}")
+            evaluation = "not evaluated"
+
+        except Exception as e:
+            print(f"Unexpected error evaluating chatbot answer: {e}, Type: {type(e)}")
+            evaluation = "not evaluated"
 
     question_data.update(
         {
@@ -289,6 +312,8 @@ def eval_task(
             "latency": answer_latency,
             "answered": answered,
             "evaluated": evaluated,
+            "eval_prompt_tokens": eval_prompt_tokens,
+            "eval_completion_tokens": eval_completion_tokens,
         }
     )
 
@@ -297,28 +322,53 @@ def eval_task(
     return question_data
 
 
-def create_eval_tag() -> str:
-    """Create a tag for the evaluation"""
+def create_eval_metadata(settings: PipelineSettings) -> str:
+    """Create a id for the evaluation"""
 
-    eval_tag = (
-        "eval"
-        f"_chatbot-v{chatbot_settings.version}"
-        f"_at:{get_timestamp().replace(' ', '_')}"
+    def get_git_cmd_response(cmd_args: List[str]) -> str:
+        return subprocess.check_output(cmd_args).decode("ascii").strip()
+
+    def get_activated_features(settings: PipelineSettings) -> str:
+        features = ""
+        if not settings.disable_memory:
+            features += "memory,"
+        if not settings.disable_faq:
+            features += "faq,"
+        if settings.bm25_only:
+            features += "bm25-only,"
+        if settings.use_nsx_sense:
+            features += "sense"
+        else:
+            features += "nsx"
+        return features
+
+    commit_hash = get_git_cmd_response(["git", "rev-parse", "--short", "HEAD"])
+    branch_name = get_git_cmd_response(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    activated_features = get_activated_features(settings)
+
+    eval_metadata = (
+        f"ACTIVATED:{activated_features}"
+        f"_BRANCH:{branch_name.replace('/', '-')}"
+        f"_COMMIT:{commit_hash}"
     )
-    return eval_tag
+
+    return eval_metadata
 
 
 if __name__ == "__main__":
 
     settings = PipelineSettings()
-    # Create a tag  for the evaluation
     eval_timestamp = get_timestamp()
-    eval_tag = create_eval_tag()
+    # Create a id  for the evaluation with the prefix "evl-" + 12 random characters
+    eval_id = generate_uuid(prefix="evl")[:16]
+    eval_metadata = create_eval_metadata(settings)
 
     # Print Evaluation Settings
     print("Evaluation Settings:")
     print("Pipeline Name:", settings.pipeline_name)
-    print("Evaluation Tag:", eval_tag)
+    print("Evaluation ID:", eval_id)
+    print("Evaluation Timestamp:", eval_timestamp)
+    print("Evaluation Metadata:", eval_metadata)
     print("Chatbot Model:", settings.chatbot_model)
     print("Disable Memory:", settings.disable_memory)
     print("Disable FAQ:", settings.disable_faq)
@@ -353,13 +403,13 @@ if __name__ == "__main__":
     # Create log dir
     log_dir = Path(settings.validation_log_dir, settings.pipeline_name)
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"{eval_tag}_log.json"
+    log_path = log_dir / f"{eval_id}_log.json"
 
     # Create dataset dir
     dataset_dir = Path(data_dir, "datasets")
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    evaluations_path = data_dir / f"{eval_tag}_evaluations.jsonl"
+    evaluations_path = data_dir / f"{eval_id}_evaluations.jsonl"
 
     # Download the datasets from Google Sheets if its is possible
     if settings.google_oauth2_token:
@@ -421,7 +471,7 @@ if __name__ == "__main__":
                     "vqid": f"{question.id}_{vidx}",
                     "qid": question.id,
                     "index": dataset.index,
-                    "tag": eval_tag,
+                    "id": eval_id,
                     "question": variant,
                     "gold_answer": question.answer,
                 }
@@ -431,7 +481,11 @@ if __name__ == "__main__":
         )
 
     with Progress(
-        *Progress.get_default_columns(),
+        progress.TextColumn("[progress.description]{task.description}"),
+        progress.BarColumn(),
+        progress.MofNCompleteColumn(),
+        progress.TaskProgressColumn(),
+        progress.TimeRemainingColumn(),
         progress.TimeElapsedColumn(),
     ) as progress:
 
@@ -460,6 +514,7 @@ if __name__ == "__main__":
     # Log the evaluation results
     answers_log = [
         AnswerLog(
+            evaluation_id=eval_id,
             timestamp=eval_timestamp,
             index=question_data["index"],
             question=question_data["question"],
@@ -470,18 +525,22 @@ if __name__ == "__main__":
             answered=question_data["answered"],
             evaluated=question_data["evaluated"],
             latency=question_data["latency"],
+            eval_prompt_tokens=question_data["eval_prompt_tokens"],
+            eval_completion_tokens=question_data["eval_completion_tokens"],
+            metadata=eval_metadata,
         )
         for question_data in evaluated_questions
     ]
 
     eval_log = EvaluationLog(
         eval_config=EvaluationConfig(
-            tag=eval_tag,
+            id=eval_id,
             memory=(not settings.disable_memory),
             faq=(not settings.disable_faq),
             sense=settings.use_nsx_sense,
             number_of_questions=len(evaluated_questions),
             timestamp=eval_timestamp,
+            metadata=eval_metadata,
         ),
         log=answers_log,
     )
