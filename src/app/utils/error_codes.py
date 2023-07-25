@@ -1,0 +1,15 @@
+from enum import Enum
+
+
+class ErrorCodes(int, Enum):
+    TIMEOUT = 100
+    NSX_AUTHENTICATION = 101
+    NSX_SEARCH = 102
+    SENSE_SEARCH = 103
+    MODERATION = 104
+    PROMPT_ANSWERER = 105
+    DIALOG_CONFIG = 106
+    WEBHOOK = 107
+    MAX_TOKENS = 108
+    MEMORY = 109
+    GENERIC = 110

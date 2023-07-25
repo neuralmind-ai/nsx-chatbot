@@ -1,9 +1,19 @@
 version: "3.1"
 
 services:
-  waba-api:
-    image: whatsappbot:latest
-    ports:
-      - 9000:80
+  nsxchatbot:
+    image: nsxchatbot.azurecr.io/nsxchatbot:latest
     restart: always
     env_file: "./src/.env"
+    volumes:
+      - ./src/app/logs:/nsx-chatbot/src/logs
+    network_mode: "host"
+
+  redis:
+    image: redis:latest
+    ports:
+      - 6380:6379
+    volumes:
+      - ./redis.conf:/redis.conf
+    # Disable protected mode
+    command: [ "redis-server", "/redis.conf", "--protected-mode", "no" ]
