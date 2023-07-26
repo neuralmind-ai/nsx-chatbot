@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     max_tokens_faq_prompt: int = 3700
     reasoning_model = "gpt-3.5-turbo-azure"
     chatbot_language: str = "pt"
+    num_docs_search: int = 1
     # Features to use
     disable_faqs: bool = True
     disable_memory: bool = False

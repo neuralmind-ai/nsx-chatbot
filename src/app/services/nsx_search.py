@@ -68,6 +68,7 @@ class NSXSearchTool:
             str: A string telling the chatbot that the answer was not found on NSX.
         """
         # Parameters for the request
+        assert num_docs > 0
         params = {
             "index": index,
             "query": query,

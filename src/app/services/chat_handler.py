@@ -444,6 +444,7 @@ class ChatHandler:
                     latency_dict,
                     api_key,
                     searches_left,
+                    settings.num_docs_search,
                     bm25_only,
                 )
 
@@ -496,6 +497,7 @@ class ChatHandler:
         latency_dict: Dict[str, float],
         api_key: str,
         searches_left: int,
+        num_docs: int,
         bm25_only: bool = False,
     ) -> Tuple[str, SearchTool]:
         """
@@ -535,7 +537,7 @@ class ChatHandler:
                 # Get the first document from NSX
                 time_nsx_answer = time.time()
                 observation = self.nsx_search.search(
-                    query, index, api_key, searches_left, bm25_only
+                    query, index, api_key, searches_left, num_docs, bm25_only
                 )
                 latency_dict["nsx_answer"] = time.time() - time_nsx_answer
                 tool = SearchTool.NSX
