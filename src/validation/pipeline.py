@@ -276,6 +276,7 @@ def eval_task(
         print(f"Error getting chatbot answer: {e}, Type: {type(e)}")
         reasoning = "Indisponível"
         chatbot_answer = "Erro ao obter a resposta para a pergunta."
+        evaluation = "not evaluated"
 
     answer_latency = time.time() - answer_latency
 
