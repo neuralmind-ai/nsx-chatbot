@@ -18,11 +18,16 @@ class GoogleCredentialsToken(BaseModel):
     expiry: str
 
 
+from settings import ChatbotHandlerEnum
+
+
 class PipelineSettings(BaseSettings):
     """Chatbot Validation Pipeline settings
 
     This class is used to store the settings for the validation pipeline.
     """
+
+    chatbot_handler: ChatbotHandlerEnum = ChatbotHandlerEnum.react
 
     # Azure storage
     evalchatbot_storage_cs: str = ""
