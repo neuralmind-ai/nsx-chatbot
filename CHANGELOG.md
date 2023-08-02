@@ -24,14 +24,22 @@ The format is based on Keep a [Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ---
 
-## [Version 1.0.1] 2023-07-27
+## [Version 1.1.0] 2023-02-08
+
+### Added
+- Created a ChatHandler class based on function calls
+- Created a ChatHandler factory strategy to enable choice of ChatHandler implementation. We have two implementations available:
+    - Using the React method
+    - Using function calls
 
 ### Fixed
 - Fixed error when searching in NSX did not return documents due to a bug when passing num_docs and bm25_only parameters
 - Fixed error in JSONMemoryHandler where when the memory was used the first message was duplicated in the chat history
 - Fixed error in automatic evaluation where when there was an error in the chatbot response, the evaluation would break because the evaluation flag was not defined
+- Fixed incorrect action string split that caused the chatbot to make two calls to the same reasoning step
 
 ### Enabled Features
+- ChatHandler using the React method
 - User history (Memory)
 - Searches using NeuralSearch and NeuralSearch Sense
 - Developer commands, introduction and disclaimer messages in the WhatsApp chatbot.
