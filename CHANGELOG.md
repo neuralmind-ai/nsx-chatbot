@@ -31,6 +31,7 @@ The format is based on Keep a [Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Created a ChatHandler factory strategy to enable choice of ChatHandler implementation. We have two implementations available:
     - Using the React method
     - Using function calls
+- Add option for custom accounts in the whatsapp chatbot
 
 ### Fixed
 - Fixed error when searching in NSX did not return documents due to a bug when passing num_docs and bm25_only parameters
