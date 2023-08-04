@@ -165,13 +165,13 @@ class JSONMemoryHandler(MemoryHandler):
         if user_chat_history:
             index_chat_history = user_chat_history.get(index, None)
         else:
-            memory[user_id] = {index: message}
+            memory[user_id] = {index: ""}
             index_chat_history = memory[user_id][index]
 
         if not index_chat_history:
             memory[user_id][index] = message
         else:
-            memory[user_id][index] = memory[user_id][index] + "\n" + message
+            memory[user_id][index] = memory[user_id][index] + message
 
         self._save(memory=memory)
 

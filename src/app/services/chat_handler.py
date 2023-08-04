@@ -228,7 +228,10 @@ class ChatHandler:
             model_utils.get_num_tokens(user_message)
             + model_utils.get_num_tokens(chat_history)
         ) > settings.max_tokens_prompt:
-            return "Sua mensagem é muito longa para que eu consiga processá-la adequadamente. Por favor, escreva-a de modo mais conciso."
+            return (
+                "Sua mensagem é muito longa para que eu consiga processá-la adequadamente."
+                "Por favor, escreva-a de modo mais conciso."
+            )
 
         time_pre_reasoning = time.time()
         answer, debug_string = self.find_answer(
@@ -366,8 +369,8 @@ class ChatHandler:
             or settings.default_index_domain
         )
 
-        full_chat_prompt = self.chat_prompt.format(domain=index_domain)
-        prompt = f"{full_chat_prompt}\n{chat_history}\nMensagem: {user_message}\n"
+        prompt = f"{self.chat_prompt}\n\n{chat_history}\nMensagem: {user_message}\n"
+        prompt = prompt.format(domain=index_domain)
 
         # Stores all reasoning steps for debugging
         debug_string = ""
@@ -389,7 +392,7 @@ class ChatHandler:
                 # Occurs if there is no action
                 thought = reasoning.split("\n")[0]
                 action = model_utils.get_reasoning(
-                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:",
+                    f"{reasoning_prompt} {thought}\nAção {i}:",
                     model=self._model,
                     stop=[f"Observação {i}:", "Mensagem:"],
                 )
@@ -402,12 +405,12 @@ class ChatHandler:
                 )
 
             try:
-                action_type, action_input = action.split(f"\nTexto da ação {i}:")
+                action_type, action_input = action.split(f"\nTexto da Ação {i}:")
             except Exception:
                 # Occurs if there is no action input
                 action_type = action.split("\n")[0]
                 action_input = model_utils.get_reasoning(
-                    f"{reasoning_prompt}Pensamento {i}: {thought}\nAção {i}:{action_type}\nTexto da Ação {i}:",
+                    f"{reasoning_prompt} {thought}\nAção {i}:{action_type}\nTexto da Ação {i}:",
                     model=self._model,
                     stop=[f"Observação {i}:", "Mensagem:"],
                 )
@@ -423,7 +426,12 @@ class ChatHandler:
                 print(f"Thought {i}: {thought}")
                 print(f"Action {i}: {action_type}")
                 print(f"Input of Action {i}: {action_input}")
-            debug_string += f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\n"
+
+            debug_string += (
+                f"Pensamento {i}: {thought}\n"
+                f"Ação {i}: {action_type}\n"
+                f"Texto da Ação {i}: {action_input}\n"
+            )
 
             if action_type.startswith("Finalizar"):
                 done = True
@@ -444,6 +452,7 @@ class ChatHandler:
                     latency_dict,
                     api_key,
                     searches_left,
+                    settings.num_docs_search,
                     bm25_only,
                 )
 
@@ -460,7 +469,12 @@ class ChatHandler:
                 debug_string += f"Observação {i} ({tool}): {observation}\n"
 
             # Adds the thought, action and observation to the iteration string
-            iteration_string = f"Pensamento {i}: {thought}\nAção {i}: {action_type}\nTexto da Ação {i}: {action_input}\nObservação {i}: {observation}\n"
+            iteration_string = (
+                f"Pensamento {i}: {thought}\n"
+                f"Ação {i}: {action_type}\n"
+                f"Texto da Ação {i}: {action_input}\n"
+                f"Observação {i}: {observation}\n"
+            )
 
             # Checks if the number of tokens is under the limit
             total_tokens = model_utils.get_num_tokens(prompt + iteration_string)
@@ -496,6 +510,7 @@ class ChatHandler:
         latency_dict: Dict[str, float],
         api_key: str,
         searches_left: int,
+        num_docs: int,
         bm25_only: bool = False,
     ) -> Tuple[str, SearchTool]:
         """
@@ -535,7 +550,7 @@ class ChatHandler:
                 # Get the first document from NSX
                 time_nsx_answer = time.time()
                 observation = self.nsx_search.search(
-                    query, index, api_key, searches_left, bm25_only
+                    query, index, api_key, searches_left, num_docs, bm25_only
                 )
                 latency_dict["nsx_answer"] = time.time() - time_nsx_answer
                 tool = SearchTool.NSX

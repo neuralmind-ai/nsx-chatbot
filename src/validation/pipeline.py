@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from rich import print, progress
 from rich.progress import Progress, TaskID
 
+from app.services import chat_handler_factory
 from app.services.chat_handler import ChatHandler
 from app.services.database import JSONLDBManager
 from app.services.memory_handler import JSONMemoryHandler
@@ -276,6 +277,7 @@ def eval_task(
         print(f"Error getting chatbot answer: {e}, Type: {type(e)}")
         reasoning = "Indisponível"
         chatbot_answer = "Erro ao obter a resposta para a pergunta."
+        evaluation = "not evaluated"
 
     answer_latency = time.time() - answer_latency
 
@@ -382,7 +384,8 @@ if __name__ == "__main__":
 
     memory = JSONMemoryHandler(path=settings.memory_path)
 
-    chatbot = ChatHandler(
+    ChatBotHandler = chat_handler_factory.getHandler(settings.chatbot_handler)
+    chatbot = ChatBotHandler(
         db=database,
         memory=memory,
         model=settings.chatbot_model,
@@ -487,6 +490,7 @@ if __name__ == "__main__":
         progress.TaskProgressColumn(),
         progress.TimeRemainingColumn(),
         progress.TimeElapsedColumn(),
+        speed_estimate_period=5 * 60,
     ) as progress:
 
         overall_progress_task = progress.add_task(

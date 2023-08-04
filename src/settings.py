@@ -1,3 +1,4 @@
+from enum import Enum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,6 +24,11 @@ def get_version():
                 return line.split("=")[1].replace('"', "").strip()
     # If version is not found, return unknown
     return "unknown"
+
+
+class ChatbotHandlerEnum(str, Enum):
+    react = "ChatHandler"
+    function_call = "ChatHandlerFunctionCall"
 
 
 class Settings(BaseSettings):
@@ -69,8 +75,11 @@ class Settings(BaseSettings):
     max_faq_questions: int = 5
     max_num_reasoning: int = 6
     max_tokens_faq_prompt: int = 3700
+    max_tokens_function_call: int = 1024
+    parallel_observations_function_call = 4
     reasoning_model = "gpt-3.5-turbo-azure"
     chatbot_language: str = "pt"
+    num_docs_search: int = 1
     # Features to use
     disable_faqs: bool = True
     disable_memory: bool = False

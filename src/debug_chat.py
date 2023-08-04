@@ -8,6 +8,7 @@ import argparse
 from rich import print
 
 from app.services.chat_handler import ChatHandler
+from app.services.chat_handler_factory import getHandler
 
 # from app.services.memory_handler import RedisMemoryHandler
 from app.services.database import JSONLDBManager
@@ -24,6 +25,7 @@ if __name__ == "__main__":
     parser.add_argument("--use-nsx", action=argparse.BooleanOptionalAction)
     parser.add_argument("--bm25-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-func", action=argparse.BooleanOptionalAction)
     parser.add_argument("question", nargs="?")
     args = parser.parse_args()
 
@@ -59,8 +61,13 @@ if __name__ == "__main__":
     bm25_only = args.bm25_only or False
     verbose = get_arg(args.verbose, "Verbose? ([y]/n): ", bool_parser)
     first_question = args.question
+    use_func = args.use_func
 
-    chat_bot = ChatHandler(
+    Handler: ChatHandler = getHandler("ChatHandler")
+    if use_func:
+        Handler = getHandler("ChatHandlerFunctionCall")
+
+    chat_bot = Handler(
         db=db_manager,
         memory=memory_handler,
         dev_mode=dev_mode,
@@ -68,6 +75,7 @@ if __name__ == "__main__":
         disable_memory=disable_memory,
         use_nsx_sense=use_nsx_sense,
         verbose=verbose,
+        return_debug=False,
     )
 
     print("--------------[blue]CHAT[/]--------------")

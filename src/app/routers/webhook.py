@@ -74,11 +74,14 @@ def process_request(request: Request, body: Union[WebhookMessage, WebhookStatus]
             if not whatsapp_verbose:
                 whatsapp_verbose = False
 
+            api_key = request.headers.get("api-key", settings.api_key)
+
             answer = request.app.state.chatbot.get_response(
                 message,
                 destinatary,
                 nm_number,
                 current_index,
+                api_key,
                 whatsapp_verbose=whatsapp_verbose,
             )
             post_360_dialog_text_message(destinatary, answer, nm_number)
