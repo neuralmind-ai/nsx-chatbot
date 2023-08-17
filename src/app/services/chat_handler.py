@@ -72,6 +72,7 @@ class ChatHandler:
 
         # Base prompts
         self.chat_prompt = prompts[self.language]["chat_prompt"]
+        self.faq_prompt = prompts[self.language]["faq_prompt"]
         self.summary_prompt = prompts[self.language]["new_summary_prompt"]
 
         # Useful prompt snippets:
@@ -364,13 +365,21 @@ class ChatHandler:
                 "If whatsapp_verbose is True, destinatary and d360_number must not be None"
             )
 
-        index_domain = (
-            self._db.get_index_information(index, "domain")
-            or settings.default_index_domain
+        recommendation = self._db.get_index_information(index, "recommendation")
+
+        index_domain = self._db.get_index_information(index, "domain")
+
+        if not index_domain:
+            index_domain = "documentos em sua base de dados"
+
+        if not recommendation:
+            recommendation = "fontes oficiais do domínio mencionado anteriormente"
+
+        chat_prompt = self.chat_prompt.format(
+            domain=index_domain, recommendation=recommendation
         )
 
-        prompt = f"{self.chat_prompt}\n\n{chat_history}\nMensagem: {user_message}\n"
-        prompt = prompt.format(domain=index_domain)
+        chat_prompt += f"\n{chat_history}\nMensagem: {user_message}\n"
 
         # Stores all reasoning steps for debugging
         debug_string = ""
@@ -379,7 +388,7 @@ class ChatHandler:
         done = False
         for i in range(1, settings.max_num_reasoning + 1):
             # Adds the reasoning to the prompt
-            reasoning_prompt = f"{prompt}Pensamento {i}:"
+            reasoning_prompt = f"{chat_prompt}Pensamento {i}:"
             reasoning = model_utils.get_reasoning(
                 prompt=reasoning_prompt,
                 model=self._model,
@@ -477,17 +486,17 @@ class ChatHandler:
             )
 
             # Checks if the number of tokens is under the limit
-            total_tokens = model_utils.get_num_tokens(prompt + iteration_string)
+            total_tokens = model_utils.get_num_tokens(chat_prompt + iteration_string)
             if total_tokens > settings.max_tokens_prompt:
                 break
 
             # Adds the iteration string to the prompt
-            prompt += iteration_string
+            chat_prompt += iteration_string
 
         # If the reasoning is not done, forces the finish
         if not done:
             answer = model_utils.get_reasoning(
-                self.forced_finish.format(prompt=prompt), self._model
+                self.forced_finish.format(prompt=chat_prompt), self._model
             )
             if self.verbose:
                 print(f"Finalizar Forçado: {answer}")

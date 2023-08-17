@@ -86,9 +86,9 @@ class Settings(BaseSettings):
     use_sense: bool = True
 
     # IndexMenu
-    menu_message = "Olá. Escolha um dos itens abaixo para iniciar a conversa."
-    selection_message: str = "Selecione um item"
-    request_menu_message: str = "Para selecionar outro item futuramente, envie #menu"
+    menu_message = "Olá. Para iniciar a conversa, selecione o seu assunto de interesse no menu abaixo."
+    selection_message: str = "Selecione um assunto"
+    request_menu_message: str = "Caso deseje mudar de assunto futuramente, envie #menu"
 
     # Domain
     default_index_domain = "documentos em minha base de dados"
