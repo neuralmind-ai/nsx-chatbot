@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument("--dev", action=argparse.BooleanOptionalAction)
     parser.add_argument("--disable-faq", action=argparse.BooleanOptionalAction)
     parser.add_argument("--disable-mem", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--use-nsx", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-sense", action=argparse.BooleanOptionalAction)
     parser.add_argument("--bm25-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction)
     parser.add_argument("--use-func", action=argparse.BooleanOptionalAction)
@@ -37,31 +37,24 @@ if __name__ == "__main__":
 
     chat_bot_id = "chatbot"
 
-    def bool_parser(v, prompt=None):
-        if prompt and "[n]" in prompt:
-            return False if v.strip() in ("n", "") else True
-        return True if v.strip() in ("y", "") else False
+    user_id = args.user if args.user is not None else "teste"
+    index = args.index if args.index is not None else "FUNDEP_Paraopeba"
 
-    def get_arg(arg_value, prompt, parser=None):
-        if arg_value is not None:
-            return arg_value
-        else:
-            v = input(prompt)
-            if parser is not None:
-                return parser(v, prompt)
-
-    user_id = get_arg(args.user, "User_ID: ")
-    index = get_arg(args.index, "Index: ")
-
-    print("--------[blue]Chatbot Settings[/]--------")
-    dev_mode = get_arg(args.dev, "Dev mode? ([y]/n): ", bool_parser)
-    disable_faq = get_arg(args.disable_faq, "Disable FAQ? ([y]/n): ", bool_parser)
-    disable_memory = get_arg(args.disable_mem, "Disable Memory? ([y]/n): ", bool_parser)
-    use_nsx_sense = get_arg(args.use_nsx, "Use NSX Sense? ([y]/n): ", bool_parser)
+    dev_mode = args.dev if args.dev is not None else True
+    disable_faq = args.disable_faq if args.disable_faq is not None else True
+    disable_memory = args.disable_mem if args.disable_mem is not None else False
     bm25_only = args.bm25_only or False
-    verbose = get_arg(args.verbose, "Verbose? ([y]/n): ", bool_parser)
+    verbose = args.verbose if args.verbose is not None else True
     first_question = args.question
     use_func = args.use_func
+    use_nsx_sense = args.use_sense if args.use_sense is not None else True
+
+    print("--------[blue]Chatbot Settings[/]--------")
+    print("Dev mode:", dev_mode)
+    print("Disable FAQ:", disable_faq)
+    print("Disable memory:", disable_memory)
+    print("BM25 only:", bm25_only)
+    print("Verbose mode:", verbose)
 
     Handler: ChatHandler = getHandler("ChatHandler")
     if use_func:

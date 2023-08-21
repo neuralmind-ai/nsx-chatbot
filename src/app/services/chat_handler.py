@@ -234,6 +234,10 @@ class ChatHandler:
                 "Por favor, escreva-a de modo mais conciso."
             )
 
+        # Prints the memory for debugging purposes:
+        if self.verbose:
+            print(f"[blue]Current Memory:\n{chat_history}")
+
         time_pre_reasoning = time.time()
         answer, debug_string = self.find_answer(
             user_message,
@@ -610,8 +614,6 @@ class ChatHandler:
         # Gets the reasoning for the prompt
         summary = model_utils.get_reasoning(prompt, model=self._model)
 
-        if self.verbose:
-            print(f"Summary: {summary}")
         return summary
 
     @staticmethod
