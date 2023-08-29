@@ -30,22 +30,44 @@ class MemoryHandler(ABC):
     """
 
     @abstractmethod
-    def save_history(
-        self, user: str, chatbot_id: str, index: str, message: str
+    def save_interaction(
+        self, user: str, chatbot_id: str, index: str, interaction: str
     ) -> None:
         """
-        This method is used to save the chat history of a user in a given index.
-        If the user already has a history in that index, the new message will be appended to the existing history.
+        This method is used to save a interaction of a user in a given index.
         Every time a new message is saved, the expiration time of the key is updated.
+
         Args:
-            - user (str): The id of the user that sent the message (maybe phone number).
-            - chatbot_id (str): The id of the chatbot instance (maybe phone number).
-            - index (str): The index where the user had the conversation.
-            - message (str): The new message exchange between the user and the bot.
+
+        - user (str): The id of the user that sent the message (maybe phone number).
+        - chatbot_id (str): The id of the chatbot instance (maybe phone number).
+        - index (str): The index where the user had the conversation.
+        - interaction (str): The new interaction between the user and the bot.
+            - Interactions are expected to be written as "User: message\\nAssistant: response"
         """
 
     @abstractmethod
-    def retrieve_history(self, user: str, chatbot_id: str, index: str) -> str:
+    def save_history(
+        self, user: str, chatbot_id: str, index: str, history: str
+    ) -> None:
+        """
+        This method is used to save the chat history of a user in a given index.
+        If the user already has a history in that index, the new history will overwrite the existing history.
+        Every time a new message is saved, the expiration time of the key is updated.
+
+        Args:
+
+        - user (str): The id of the user that sent the message (maybe phone number).
+        - chatbot_id (str): The id of the chatbot instance (maybe phone number).
+        - index (str): The index where the user had the conversation.
+        - history (str): String representing a JSON object:
+            {
+                "interactions": ["User: message\nAssistant: response", ...]
+            }
+        """
+
+    @abstractmethod
+    def retrieve_history(self, user: str, chatbot_id: str, index: str) -> dict:
         """
         This method is used to retrieve the chat history of a user in a given index.
         Args:
@@ -53,7 +75,10 @@ class MemoryHandler(ABC):
             - chatbot_id (str): The id of the chatbot instance.
             - index (str): The index where the user had the conversation.
         Returns:
-            - str: The chat history of the user in the given index.
+            - A dictionary in the following format: {
+                "interactions": [list of strings, each of which representing a message-response pair],
+                "summary": string containing a summary of interactions older than those in the list
+            }
         """
 
     @abstractmethod
@@ -155,36 +180,52 @@ class JSONMemoryHandler(MemoryHandler):
             json.dump(memory, f, ensure_ascii=False, indent=4)
 
     @handle_memory_errors
-    def save_history(
-        self, user: str, chatbot_id: str, index: str, message: str
+    def save_interaction(
+        self, user: str, chatbot_id: str, index: str, interaction: str
     ) -> None:
+
         user_id = user + "_" + chatbot_id
         memory = self._open()
-        user_chat_history = memory.get(user_id, None)
-        index_chat_history = None
-        if user_chat_history:
-            index_chat_history = user_chat_history.get(index, None)
-        else:
-            memory[user_id] = {index: ""}
-            index_chat_history = memory[user_id][index]
 
-        if not index_chat_history:
-            memory[user_id][index] = message
-        else:
-            memory[user_id][index] = memory[user_id][index] + message
+        # Checks if the user has a history:
+        user_chat_history = memory.get(user_id, None)
+        if user_chat_history is None:
+            memory[user_id] = {index: {"interactions": [], "summary": ""}}
+
+        history = memory[user_id][index]
+        history["interactions"].append(interaction)
+        history_string = json.dumps(history, ensure_ascii=False)
+
+        self.save_history(user, chatbot_id, index, history_string)
+
+    @handle_memory_errors
+    def save_history(
+        self, user: str, chatbot_id: str, index: str, history: str
+    ) -> None:
+
+        user_id = user + "_" + chatbot_id
+        memory = self._open()
+
+        # Checks if the user already has a chat history:
+        user_chat_history = memory.get(user_id, None)
+        if not user_chat_history:
+            memory[user_id] = {}
+
+        memory[user_id][index] = json.loads(history)
 
         self._save(memory=memory)
 
     @handle_memory_errors
-    def retrieve_history(self, user: str, chatbot_id: str, index: str) -> str:
+    def retrieve_history(self, user: str, chatbot_id: str, index: str) -> dict:
         user_id = user + "_" + chatbot_id
-        return self._open().get(user_id, {}).get(index, None)
+        history = self._open().get(user_id, {}).get(index, None)
+        return history
 
     def clear_history(self, user: str, chatbot_id: str, index: str) -> None:
         user_id = user + "_" + chatbot_id
         memory = self._open()
         try:
-            del memory[user_id][index]
+            del memory[user_id][index]["interactions"]
             self._save(memory=memory)
         except Exception:
             pass
@@ -247,78 +288,45 @@ class RedisMemoryHandler(MemoryHandler):
         self.client = redis.Redis(host=host, port=port)
 
     @handle_memory_errors
-    def save_history(
-        self, user: str, chatbot_id: str, index: str, message: str
+    def save_interaction(
+        self, user: str, chatbot_id: str, index: str, interaction: str
     ) -> None:
-        """
-        This method is used to save the chat history of a user in a given index.
-        If the user already has a history in that index, the new message will be appended to the existing history.
-        Every time a new message is saved, the expiration time of the key is updated.
-        Args:
-            - user (str): The id of the user that sent the message (maybe phone number).
-            - chatbot_id (str): The id of the chatbot instance (maybe phone number).
-            - index (str): The index where the user had the conversation.
-            - message (str): The new message exchange between the user and the bot.
-        """
         user_id = user + "_" + chatbot_id
-        if self.client.hexists(user_id, index) == 0:
-            self.client.hset(user_id, index, message)
-        else:
-            current_history = self.retrieve_history(user, chatbot_id, index)
-            updated_history = current_history + message
-            self.client.hset(user_id, index, updated_history)
+        chat_history = self.retrieve_history(user, chatbot_id, index)
+        if chat_history is None:
+            chat_history = {"interactions": [], "summary": ""}
+        chat_history["interactions"].append(interaction)
+        history_string = json.dumps(chat_history)
+        self.save_history(user, chatbot_id, index, history_string)
         self.client.expire(user_id, settings.expiration_time_in_seconds)
 
     @handle_memory_errors
-    def retrieve_history(self, user: str, chatbot_id: str, index: str) -> str:
-        """
-        This method is used to retrieve the chat history of a user in a given index.
-        Args:
-            - user (str): The id of the user that sent the message.
-            - chatbot_id (str): The id of the chatbot instance.
-            - index (str): The index where the user had the conversation.
-        Returns:
-            - str: The chat history of the user in the given index.
-        """
+    def save_history(
+        self, user: str, chatbot_id: str, index: str, history: str
+    ) -> None:
+        user_id = user + "_" + chatbot_id
+        self.client.hset(user_id, index, history)
+        self.client.expire(user_id, settings.expiration_time_in_seconds)
+
+    @handle_memory_errors
+    def retrieve_history(self, user: str, chatbot_id: str, index: str) -> dict:
         user_id = user + "_" + chatbot_id
         if self.client.hexists(user_id, index) == 0:
             return None
-        return self.client.hget(user_id, index).decode("utf-8")
+        return json.loads(self.client.hget(user_id, index).decode("utf-8"))
 
     @handle_memory_errors
     def clear_history(self, user: str, chatbot_id: str, index: str) -> None:
-        """
-        This method is used to clear the chat history of a user in a given index.
-        Args:
-            - user (str): The id of the user that sent the message.
-            - chatbot_id (str): The id of the chatbot instance.
-            - index (str): The index where the user had the conversation.
-        """
         user_id = user + "_" + chatbot_id
         self.client.hdel(user_id, index)
 
     @handle_memory_errors
     def set_latest_user_index(self, user: str, chatbot_id: str, index: str) -> None:
-        """
-        This method is used to set the last index used by the user.
-        Args:
-            - user (str): The id of the user that sent the message.
-            - chatbot_id (str): The id of the chatbot instance.
-            - index (str): The last index used by the user.
-        """
         user_id = user + "_" + chatbot_id
         self.client.hset(user_id, "latest_index", index)
 
     @handle_memory_errors
     def get_latest_user_index(self, user: str, chatbot_id: str) -> str:
-        """
-        This method is used to get the last index used by the user.
-        Args:
-            - user (str): The id of the user that sent the message.
-            - chatbot_id (str): The id of the chatbot instance.
-        Returns:
-            - str: The last index used by the user.
-        """
         user_id = user + "_" + chatbot_id
         if self.client.hexists(user_id, "latest_index") == 0:
             return None

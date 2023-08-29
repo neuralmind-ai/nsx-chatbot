@@ -37,7 +37,7 @@ def get_num_tokens(text: str) -> int:
     return len(encoding.encode(text))
 
 
-def get_reasoning(prompt: str, model, stop: List[str] = None) -> str:
+def get_reasoning(prompt: str, model, stop: List[str] = None, max_tokens=512) -> str:
     """
     Sends a request to prompt_answerer to get a reasoning.
 
@@ -57,7 +57,7 @@ def get_reasoning(prompt: str, model, stop: List[str] = None) -> str:
         "model": model,
         "configurations": {
             "temperature": 0,
-            "max_tokens": 512,
+            "max_tokens": max_tokens,
             "top_p": 1,
             "frequency_penalty": 0,
             "presence_penalty": 0,

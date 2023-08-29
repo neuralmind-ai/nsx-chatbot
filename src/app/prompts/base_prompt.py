@@ -9,11 +9,11 @@ from app.prompts import (
 
 prompts = {
     "pt": {
-        "chat_prompt": chat_prompt.prompt["pt"].strip(),
-        "answer_not_found": answer_not_found.prompt["pt"].strip(),
-        "unanswerable_search": unanswerable_search.prompt["pt"].strip(),
-        "forced_finish": forced_finish.prompt["pt"].strip(),
-        "faq_prompt": faq_prompt.prompt["pt"].strip(),
-        "new_summary_prompt": new_summary_prompt.prompt["pt"].strip(),
+        "chat_prompt": chat_prompt.prompt["pt"],
+        "answer_not_found": answer_not_found.prompt["pt"],
+        "unanswerable_search": unanswerable_search.prompt["pt"],
+        "forced_finish": forced_finish.prompt["pt"],
+        "faq_prompt": faq_prompt.prompt["pt"],
+        "new_summary_prompt": new_summary_prompt.prompt["pt"],
     }
 }

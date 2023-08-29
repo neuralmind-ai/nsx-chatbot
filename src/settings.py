@@ -62,7 +62,8 @@ class Settings(BaseSettings):
     search_index: str = "FUNDEP_Ciencias"
 
     # Chat_history
-    max_tokens_chat_history: int = 1500
+    max_tokens_chat_history: int = 800
+    max_tokens_summary: int = 300
 
     # Tiktoken
     encoding_model = "gpt-3.5-turbo"
@@ -86,13 +87,13 @@ class Settings(BaseSettings):
     use_sense: bool = True
 
     # IndexMenu
-    menu_message = "Olá. Escolha um dos itens abaixo para iniciar a conversa."
-    selection_message: str = "Selecione um item"
-    request_menu_message: str = "Para selecionar outro item futuramente, envie #menu"
+    menu_message = "Olá. Para iniciar a conversa, selecione o seu assunto de interesse no menu abaixo."
+    selection_message: str = "Selecione um assunto"
+    request_menu_message: str = "Caso deseje mudar de assunto futuramente, envie #menu"
 
     # Domain
     default_index_domain = "documentos em minha base de dados"
-    wait_message = "Por favor, aguarde enquanto procuro sua resposta."
+    wait_message = "Por favor, aguarde enquanto gero sua resposta."
     default_intro_message = "Olá! Sou o chatbot da Neuralmind. Sinta-se livre para conversar comigo e enviar suas perguntas."
     default_disclaimer_message = (
         "Espero ter ajudado! Sou bem treinado nos documentos da minha base de dados, mas posso errar."
