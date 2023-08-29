@@ -373,6 +373,11 @@ class ChatHandler:
 
         index_domain = self._db.get_index_information(index, "domain")
 
+        contact = self._db.get_index_information(index, "contact")
+
+        if not contact:
+            contact = "contatar os responsáveis pelo domínio"
+
         if not index_domain:
             index_domain = "documentos em sua base de dados"
 
@@ -380,7 +385,7 @@ class ChatHandler:
             recommendation = "fontes oficiais do domínio mencionado anteriormente"
 
         chat_prompt = self.chat_prompt.format(
-            domain=index_domain, recommendation=recommendation
+            domain=index_domain, recommendation=recommendation, contact=contact
         )
 
         chat_prompt += f"\n{chat_history}\nMensagem: {user_message}\n"
