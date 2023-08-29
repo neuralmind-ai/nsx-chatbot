@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Tuple
 
 import requests
+from rich import print
 
 from app.prompts import base_prompt
 from app.schemas.database_item import Item
@@ -273,8 +274,10 @@ class ChatHandler:
 
         # Adds the answer to the user's chat history
         if not self.disable_memory:
+
             time_pre_memory_history = time.time()
-            self._memory.save_history(
+
+            self._memory.save_interaction(
                 user_id,
                 chatbot_id,
                 index,
@@ -577,7 +580,7 @@ class ChatHandler:
 
     def get_chat_history(self, user_id: str, chatbot_id: str, index: str) -> str:
         """
-        Gets the chat history for the user using the memory_handler.
+        Gets the chat history in a string format for the user using the memory_handler.
 
         Args:
             - user_id: the id of the user.
@@ -585,39 +588,71 @@ class ChatHandler:
         Returns:
             - the chat history for the user (str).
         """
+
         chat_history = self._memory.retrieve_history(user_id, chatbot_id, index)
+
         # If there is no history
         if chat_history is None:
             return ""
 
-        # If the chat history is too long, makes a summary
-        # TODO: Experiments to check if making a summary is a good idea
-        if model_utils.get_num_tokens(chat_history) > settings.max_tokens_chat_history:
-            summary = self.make_summary(chat_history)
-            self._memory.clear_history(user_id, chatbot_id, index)
-            self._memory.save_history(
-                user_id,
-                chatbot_id,
-                index,
-                f"Resumo de conversas anteriores: {summary}\n",
-            )
-        return chat_history
+        interactions = chat_history["interactions"]
+        old_interactions = ""
 
-    def make_summary(self, chat_history: str) -> str:
+        if (
+            model_utils.get_num_tokens("".join(interactions))
+            > settings.max_tokens_chat_history
+        ):
+
+            # If the chat history is too long, removes the older half of interactions:
+            while (
+                model_utils.get_num_tokens("".join(interactions))
+                > settings.max_tokens_chat_history / 2
+            ):
+                old_interactions = old_interactions + "\n" + interactions.pop(0)
+
+        # If there are any old interactions:
+        if old_interactions:
+
+            old_summary = chat_history["summary"]
+
+            chat_history = {
+                "interactions": interactions,
+                "summary": self.make_summary(old_interactions, old_summary),
+            }
+
+            self._memory.save_history(
+                user_id, chatbot_id, index, json.dumps(chat_history)
+            )
+
+        summary = chat_history["summary"]
+        if summary:
+            return (
+                f"Resumo de mensagens anteriores na conversa: {summary}\nMensagens recentes da convesa:\n"
+                + "".join(interactions)
+            )
+        else:
+            return "".join(interactions)
+
+    def make_summary(self, interactions: str, old_summary: str) -> str:
         """
         Creates a summary for the chat history.
 
         Args:
-            - chat_history: the chat history to be summarized.
+            - interactions: the interactions to be summarized
+            - old_summary: the previous summary on which the interactions will be added
 
         Returns:
-            - the summary for the chat history (str).
+            - the complete summary for the chat history (str).
         """
         # TODO: Check for prompt length before sending the request
-        prompt = self.summary_prompt.format(chat_history=chat_history)
+        prompt = self.summary_prompt.format(
+            interactions=interactions, old_summary=old_summary
+        )
 
         # Gets the reasoning for the prompt
-        summary = model_utils.get_reasoning(prompt, model=self._model)
+        summary = model_utils.get_reasoning(
+            prompt, model=self._model, max_tokens=settings.max_tokens_summary
+        )
 
         return summary
 

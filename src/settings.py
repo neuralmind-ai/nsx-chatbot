@@ -62,7 +62,8 @@ class Settings(BaseSettings):
     search_index: str = "FUNDEP_Ciencias"
 
     # Chat_history
-    max_tokens_chat_history: int = 1500
+    max_tokens_chat_history: int = 800
+    max_tokens_summary: int = 300
 
     # Tiktoken
     encoding_model = "gpt-3.5-turbo"
