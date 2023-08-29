@@ -24,7 +24,26 @@ The format is based on Keep a [Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ---
 
-## [Version 1.1.0] 2023-02-08
+## [Version 1.2.0] 2023-08-29
+
+### Added
+- Added more interrogative queries
+- Added custom recommendation for when the chatbot does not know how to answer a user’s question
+- Added custom contact information to the chatbot (based on cosmosDB information)
+- Added new summary system in the chatbot memory
+
+### Removed
+- Removed search retries
+
+### Enabled Features
+- ChatHandler using the React method
+- User history (Memory)
+- Searches using NeuralSearch and NeuralSearch Sense
+- Developer commands, introduction and disclaimer messages in the WhatsApp chatbot
+- Possibility of sending custom recommendation and contact information in the chatbot
+
+
+## [Version 1.1.0] 2023-08-02
 
 ### Added
 - Created a ChatHandler class based on function calls
