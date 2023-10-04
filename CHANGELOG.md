@@ -24,6 +24,21 @@ The format is based on Keep a [Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ---
 
+## [Version 1.3.0] 2023-10-04
+
+### Changed
+- Content Filter has been modified to use the model filter in Azure instead of checking content through the OpenAI moderation endpoint
+- The Chatbot now uses gpt-3.5-0613-azure to make its reasoning
+
+### Enabled Features
+- ChatHandler using the React method
+- User history (Memory)
+- Searches using NeuralSearch only
+- Developer commands, introduction and disclaimer messages in the WhatsApp chatbot
+- Possibility of sending custom recommendation and contact information in the chatbot
+
+---
+
 ## [Version 1.2.0] 2023-08-29
 
 ### Added

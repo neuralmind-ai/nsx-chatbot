@@ -13,3 +13,4 @@ class ErrorCodes(int, Enum):
     MAX_TOKENS = 108
     MEMORY = 109
     GENERIC = 110
+    CONTENT_FILTER = 111
