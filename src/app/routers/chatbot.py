@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.schemas.messages import ChatAnswer, ChatMessage
 from app.services.build_timed_logger import build_timed_logger
+from settings import settings
 
 router = APIRouter()
 
@@ -58,11 +59,39 @@ def get_chat_answer(
                 }
             )
         )
-        message_prefix = request.app.state.db.get_index_information(
-            index, "message_prefix"
-        )
-        if message_prefix:
-            answer = message_prefix + answer
+
+        user_id = body.user
+        chatbot_id = "fundep_chatbot"
+
+        # Send a message introducing the chatbot if it's the first message from the user
+        if (
+            request.app.state.memory.check_intro_message_sent(
+                user_id, chatbot_id, index
+            )
+            is False
+        ):
+            message_prefix = request.app.state.db.get_index_information(
+                index, "message_prefix"
+            )
+            if message_prefix:
+                answer = f"{message_prefix}\n\n{answer}"
+            request.app.state.memory.set_intro_message_sent(user_id, chatbot_id, index)
+
+        # Send a disclaimer message if the user has not seen it yet
+        if (
+            request.app.state.memory.check_disclaimer_sent(user_id, chatbot_id, index)
+            is False
+        ):
+            disclaimer_message = (
+                request.app.state.db.get_index_information(index, "disclaimer")
+                or settings.default_disclaimer_message
+            )
+
+            if disclaimer_message:
+                answer = f"{answer}\n\n{disclaimer_message}"
+
+            request.app.state.memory.set_disclaimer_sent(user_id, chatbot_id, index)
+
         return ChatAnswer(answer=answer)
     except Exception as e:
         chatbot_api_logger.error(

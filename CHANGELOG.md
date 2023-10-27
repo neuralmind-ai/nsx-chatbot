@@ -24,16 +24,22 @@ The format is based on Keep a [Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ---
 
-## [Version 1.3.0] 2023-10-04
+## [Version 1.3.0] 2023-10-26
+
+### Added
+- Added disclaimer message in chatbot endpoint responses
 
 ### Changed
 - Content Filter has been modified to use the model filter in Azure instead of checking content through the OpenAI moderation endpoint
 - The Chatbot now uses gpt-3.5-0613-azure to make its reasoning
 
+### Fixed
+- Fixed resending of intro message on chatbot endpoint
+
 ### Enabled Features
 - ChatHandler using the React method
 - User history (Memory)
-- Searches using NeuralSearch only
+- Searches using NeuralSearchX only
 - Developer commands, introduction and disclaimer messages in the WhatsApp chatbot
 - Possibility of sending custom recommendation and contact information in the chatbot
 
