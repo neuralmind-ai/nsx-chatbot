@@ -78,13 +78,13 @@ class Settings(BaseSettings):
     max_tokens_faq_prompt: int = 3700
     max_tokens_function_call: int = 1024
     parallel_observations_function_call = 4
-    reasoning_model = "gpt-3.5-turbo-azure"
+    reasoning_model = "gpt-3.5-turbo-0613-azure"
     chatbot_language: str = "pt"
-    num_docs_search: int = 1
+    num_docs_search: int = 3
     # Features to use
     disable_faqs: bool = True
     disable_memory: bool = False
-    use_sense: bool = True
+    use_sense: bool = False
 
     # IndexMenu
     menu_message = "Olá. Para iniciar a conversa, selecione o seu assunto de interesse no menu abaixo."

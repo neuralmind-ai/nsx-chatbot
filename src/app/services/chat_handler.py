@@ -4,7 +4,6 @@ import traceback
 from datetime import datetime
 from typing import Dict, Tuple
 
-import requests
 from rich import print
 
 from app.prompts import base_prompt
@@ -16,13 +15,7 @@ from app.services.faq_search import FAQSearchTool
 from app.services.memory_handler import MemoryHandler
 from app.services.nsx_search import NSXSearchTool, NSXSenseSearchTool
 from app.utils import model_utils
-from app.utils.exceptions import PromptAnswererError
-from app.utils.model_utils import (
-    chat_logger,
-    error_logger,
-    harmful_logger,
-    latency_logger,
-)
+from app.utils.model_utils import chat_logger, error_logger, latency_logger
 from settings import settings
 
 
@@ -208,15 +201,6 @@ class ChatHandler:
         # Restarts the used faq, as a new message is going to be processed
         used_faq = []
 
-        # Checks if the user message is harmful
-        if self.is_the_message_harmful(user_message):
-            harmful_logger.info(
-                json.dumps(
-                    {"user_id": user_id, "message": user_message, "timestamp": date}
-                )
-            )
-            return "Mensagem ignorada por conter conteúdo ofensivo."
-
         # Gets the chat history from memory
         if not self.disable_memory:
             time_pre_memory = time.time()
@@ -253,22 +237,6 @@ class ChatHandler:
             whatsapp_verbose=whatsapp_verbose,
             bm25_only=bm25_only,
         )
-
-        # Moderates the answer
-        if self.is_the_message_harmful(answer):
-            harmful_logger.info(
-                json.dumps(
-                    {
-                        "user_id": user_id,
-                        "user_message": user_message,
-                        "answer": answer,
-                        "reasoning": debug_string,
-                        "timestamp": date,
-                    }
-                )
-            )
-
-            return "Mensagem ignorada por conter conteúdo ofensivo."
 
         latency_dict["reasoning"] = time.time() - time_pre_reasoning
 
@@ -405,6 +373,8 @@ class ChatHandler:
                 prompt=reasoning_prompt,
                 model=self._model,
                 stop=[f"Observação {i}:", "Mensagem:"],
+                user_id=destinatary,
+                user_message=user_message,
             )
 
             try:
@@ -416,6 +386,8 @@ class ChatHandler:
                     f"{reasoning_prompt} {thought}\nAção {i}:",
                     model=self._model,
                     stop=[f"Observação {i}:", "Mensagem:"],
+                    user_id=destinatary,
+                    user_message=user_message,
                 )
 
             if whatsapp_verbose:
@@ -434,6 +406,8 @@ class ChatHandler:
                     f"{reasoning_prompt} {thought}\nAção {i}:{action_type}\nTexto da Ação {i}:",
                     model=self._model,
                     stop=[f"Observação {i}:", "Mensagem:"],
+                    user_id=destinatary,
+                    user_message=user_message,
                 )
 
             thought, action_type, action_input = (
@@ -508,7 +482,10 @@ class ChatHandler:
         # If the reasoning is not done, forces the finish
         if not done:
             answer = model_utils.get_reasoning(
-                self.forced_finish.format(prompt=chat_prompt), self._model
+                self.forced_finish.format(prompt=chat_prompt),
+                self._model,
+                user_id=destinatary,
+                user_message=user_message,
             )
             if self.verbose:
                 print(f"Finalizar Forçado: {answer}")
@@ -655,31 +632,3 @@ class ChatHandler:
         )
 
         return summary
-
-    @staticmethod
-    def is_the_message_harmful(user_message: str) -> bool:
-        """
-        Checks if the message is harmful using the moderation service.
-
-        Args:
-            - user_message: the message sent by the user.
-
-        Returns:
-            - True if the message is harmful, False otherwise.
-        """
-        body = {"service": "ChatBot", "input": [user_message]}
-        try:
-            response = requests.post(settings.moderation_endpoint, json=body)
-            if response.ok:
-                response = response.json()
-                if response["results"][0]["flagged"]:
-                    return True
-                return False
-            else:
-                # TODO: improve logging error
-                print("Error calling moderataion endpoint", response.content)
-            # TODO: Log if the message comes from the user or the assistant
-        except requests.exceptions.ConnectionError as ce:
-            raise PromptAnswererError(f"Prompt answerer is down. Error: {str(ce)}")
-        except Exception:
-            pass

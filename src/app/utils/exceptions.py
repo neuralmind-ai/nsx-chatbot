@@ -102,3 +102,13 @@ class MemoryHandlerError(ChatbotException):
     def __init__(self, *args, **kwargs):
         error_code = ErrorCodes.MEMORY
         super().__init__(error_code, *args, **kwargs)
+
+
+class ContentFilterError(ChatbotException):
+    """
+    Raised when the message is filtered by the content filter.
+    """
+
+    def __init__(self, *args, **kwargs):
+        error_code = ErrorCodes.CONTENT_FILTER
+        super().__init__(error_code, *args, **kwargs)

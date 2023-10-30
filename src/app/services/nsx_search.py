@@ -74,6 +74,7 @@ class NSXSearchTool:
             "query": query,
             "max_docs_to_return": settings.max_docs_to_return,
             "format_response": False,
+            "deduplicate": False,
         }
 
         # If bm25_only is True, returns only the bm25 list
@@ -162,6 +163,7 @@ class NSXSenseSearchTool:
             "query": query,
             "max_docs_to_return": settings.max_docs_to_return,
             "format_response": False,
+            "deduplicate": False,
         }
 
         # If bm25_only is True, returns only the bm25 list
